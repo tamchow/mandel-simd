@@ -3,3 +3,5 @@ mandel.arm
 mandel.ppc
 *.o
 *.ppm
+mandel.VC.db
+Mandel.vcxproj.filters
