@@ -13,9 +13,12 @@ mandel_avx(unsigned char *image, const struct spec *s)
     __m256 iter_scale = _mm256_set1_ps(1.0f / s->iterations);
     __m256 depth_scale = _mm256_set1_ps(s->depth - 1);
 
-    #pragma omp parallel for schedule(dynamic, 1)
-    for (int y = 0; y < s->height; y++) {
-        for (int x = 0; x < s->width; x += 8) {
+	int y;
+	#pragma omp parallel for schedule(dynamic, 1)
+    for (y = 0; y < s->height; y++) {
+		int x;
+		//#pragma omp parallel for schedule(dynamic, 1)
+        for ( x = 0; x < s->width; x += 8) {
             __m256 mx = _mm256_set_ps(x + 7, x + 6, x + 5, x + 4,
                                       x + 3, x + 2, x + 1, x + 0);
             __m256 my = _mm256_set1_ps(y);

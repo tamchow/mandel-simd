@@ -1,4 +1,5 @@
 #include <xmmintrin.h>
+#include <emmintrin.h>  
 #include "mandel.h"
 
 void
@@ -13,8 +14,9 @@ mandel_sse2(unsigned char *image, const struct spec *s)
     __m128 iter_scale = _mm_set_ps1(1.0f / s->iterations);
     __m128 depth_scale = _mm_set_ps1(s->depth - 1);
 
+	int y;
     #pragma omp parallel for schedule(dynamic, 1)
-    for (int y = 0; y < s->height; y++) {
+    for (y = 0; y < s->height; y++) {
         for (int x = 0; x < s->width; x += 4) {
             __m128 mx = _mm_set_ps(x + 3, x + 2, x + 1, x + 0);
             __m128 my = _mm_set_ps1(y);
