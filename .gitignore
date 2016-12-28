@@ -5,3 +5,5 @@ mandel.ppc
 *.ppm
 mandel.VC.db
 Mandel.vcxproj.filters
+mandel.VC.VC.opendb
+x64/Debug/
