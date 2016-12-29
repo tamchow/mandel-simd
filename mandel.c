@@ -109,8 +109,8 @@ main(int argc, char *argv[])
 	};
 
 #ifdef __x86_64__
-	int use_avx = 1;
-	int use_sse2 = 1;
+	int use_avx = 0;
+	int use_sse2 = 0;
 	const char *optstring = "w:h:d:k:x:y:AS";
 #endif // __x86_64__
 
