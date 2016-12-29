@@ -100,8 +100,8 @@ main(int argc, char *argv[])
 {
 	/* Config */
 	struct spec spec = {
-		.width = 1920 * 2,
-		.height = 1080 * 2,
+		.width = 1440,
+		.height = 1080,
 		.depth = 256,
 		.xlim = {-2.5, 1.5},
 		.ylim = {-1.5, 1.5},
