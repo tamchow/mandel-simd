@@ -1,18 +1,17 @@
 #include <immintrin.h>
 #include "mandel.h"
 
-void
-mandel_avx(unsigned char *image, const struct spec *s)
+void mandel_avx(unsigned char *image, struct spec *s)
 {
-    __m256 xmin = _mm256_set1_ps(s->xlim[0]);
-    __m256 ymin = _mm256_set1_ps(s->ylim[0]);
-    __m256 xscale = _mm256_set1_ps((s->xlim[1] - s->xlim[0]) / s->width);
-    __m256 yscale = _mm256_set1_ps((s->ylim[1] - s->ylim[0]) / s->height);
+	convert_point_width_spec_to_range(s);
+    __m256 xmin = _mm256_set1_ps(s->xlim.x);
+    __m256 ymin = _mm256_set1_ps(s->ylim.x);
+    __m256 xscale = _mm256_set1_ps((s->xlim.y - s->xlim.x) / s->width);
+    __m256 yscale = _mm256_set1_ps((s->ylim.y - s->ylim.x) / s->height);
     __m256 threshold = _mm256_set1_ps(4);
     __m256 one = _mm256_set1_ps(1);
     __m256 iter_scale = _mm256_set1_ps(1.0f / s->iterations);
-    __m256 depth_scale = _mm256_set1_ps(s->depth - 1);
-
+    __m256 depth_scale = _mm256_set1_ps(s->max_color_value - 1);
 	int y;
 	#pragma omp parallel for schedule(dynamic, 1)
     for (y = 0; y < s->height; y++) {
@@ -45,7 +44,7 @@ mandel_avx(unsigned char *image, const struct spec *s)
                 __m256 mask = _mm256_cmp_ps(mag2, threshold, _CMP_LT_OS);
                 mk = _mm256_add_ps(_mm256_and_ps(mask, one), mk);
 
-                /* Early bailout? */
+                /* Early bailout_sq? */
                 if (_mm256_testz_ps(mask, _mm256_set1_ps(-1)))
                     break;
             }

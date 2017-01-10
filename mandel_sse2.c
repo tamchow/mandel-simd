@@ -2,17 +2,17 @@
 #include <emmintrin.h>  
 #include "mandel.h"
 
-void
-mandel_sse2(unsigned char *image, const struct spec *s)
+void mandel_sse2(unsigned char *image, const struct spec *s)
 {
-    __m128 xmin = _mm_set_ps1(s->xlim[0]);
-    __m128 ymin = _mm_set_ps1(s->ylim[0]);
-    __m128 xscale = _mm_set_ps1((s->xlim[1] - s->xlim[0]) / s->width);
-    __m128 yscale = _mm_set_ps1((s->ylim[1] - s->ylim[0]) / s->height);
+	convert_point_width_spec_to_range(s);
+    __m128 xmin = _mm_set_ps1(s->xlim.x);
+    __m128 ymin = _mm_set_ps1(s->ylim.x);
+    __m128 xscale = _mm_set_ps1((s->xlim.y - s->xlim.x) / s->width);
+    __m128 yscale = _mm_set_ps1((s->ylim.y - s->ylim.x) / s->height);
     __m128 threshold = _mm_set_ps1(4);
     __m128 one = _mm_set_ps1(1);
     __m128 iter_scale = _mm_set_ps1(1.0f / s->iterations);
-    __m128 depth_scale = _mm_set_ps1(s->depth - 1);
+    __m128 depth_scale = _mm_set_ps1(s->max_color_value - 1);
 
 	int y;
     #pragma omp parallel for schedule(dynamic, 1)
@@ -43,7 +43,7 @@ mandel_sse2(unsigned char *image, const struct spec *s)
                 __m128 mask = _mm_cmplt_ps(mag2, threshold);
                 mk = _mm_add_ps(_mm_and_ps(mask, one), mk);
 
-                /* Early bailout? */
+                /* Early bailout_sq? */
                 if (_mm_movemask_ps(mask) == 0)
                     break;
             }
