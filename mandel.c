@@ -119,27 +119,32 @@ inline void populate_periodicity(float *zrp, float *zip, int size, float zr, flo
 void mandel_basic(unsigned char* image, spec* s)
 {
 	convert_point_width_spec_to_range(s);
-	float xdiff = fabsf(s->xlim.y - s->xlim.x);
-	float ydiff = fabsf(s->ylim.y - s->ylim.x);
+	float xscale = fabsf(s->xlim.y - s->xlim.x) / s->width;
+	float yscale = fabsf(s->ylim.y - s->ylim.x) / s->height;
 	float depth_scale = palette_size - 1.0f;
-	//float log_2 = logf(2.0f);
-	//float denom = (2.0f*2.0f*logf(s->bailout_sq));
-	//channel rgb[3];
+	float log_2 = logf(2.0f);
+	float denom = (2.0f*2.0f*logf(s->bailout_sq));
+	float distmax = 0.0f;
+	channel rgb[3];
 	int y;
 	//#pragma omp parallel for schedule(dynamic)
 	for (y = 0; y < s->height; y++)
 	{
 		for (size_t x = 0; x < s->width; x++)
 		{
-			float cr = x * xdiff / s->width + s->xlim.x;
-			float ci = -(y * ydiff / s->height + s->ylim.x);
+			float cr = x * xscale + s->xlim.x;
+			float ci = -(y * yscale + s->ylim.x);
 			float zr = 0, zi = 0;//, zrp0 = zr, zrp1 = zr, zip0 = zi, zip1 = zi;
+			float dzr = 0, dzi = 0;
+			float m2 = ((zr * zr) + (zi * zi));
 			float zrp[ZP_SIZE] = { zr, zr };
 			float zip[ZP_SIZE] = { zi, zi };
 			size_t k = 0;
-			while ((k < s->iterations) && (((zr * zr) + (zi * zi)) < s->bailout_sq)) {
+			while ((k < s->iterations) && ( m2 < s->bailout_sq)) {
 				float zr1 = zr * zr - zi * zi + cr;
 				float zi1 = zr * zi + zr * zi + ci;
+				float dzr1 = 2.0f * (zr * dzr - zi * dzi) + 1.0f;
+				float dzi1 = 2.0f * (zr * dzi + dzr * zi);
 				//periodicity checking - can speed up the code
 				if ((((zr1 == zr) && (zi1 == zi)) || (any_of_and(zr1, zi1, zrp, zip, ZP_SIZE))))
 				{
@@ -160,35 +165,60 @@ void mandel_basic(unsigned char* image, spec* s)
 				zip1 = zip0;
 				zrp0 = zr;
 				zip0 = zi;*/
+				dzr = dzr1;
+				dzi = dzi1;
 				zr = zr1;
 				zi = zi1;
+				m2 = ((zr * zr) + (zi * zi));
 				++k;
 			}
-			//float mk = 0.0f;
-			/*if (k < s->iterations) {
-				mk = fabsf(k + 1 - logf(logf((zr * zr) + (zi * zi)) / denom) / log_2);
-			}*/
+			float mk = 0.0f;
+			if (k < s->iterations) {
+				mk = fabsf(k + 1 - logf(logf(m2) / denom) / log_2);
+			}
 			/*mk *= iter_scale;
 			mk = sqrtf(k);
-			mk *= depth_scale;
-			float mu = mk - (int)mk;*/
-			if (s->mode == GREYSCALE) {
-				//channel pixel = ((channel)mk) % 256;
-				channel pixel = linear_map_channel(k, 0, s->iterations, depth_scale, s->index_mode);
-				//channel pixel2 = linear_map_channel((((k + 1) > s->iterations) ? s->iterations : k + 1), 0, s->iterations, s->index_mode);
-				//pixel = pixel * mu + pixel2 * (1 - mu);
-				rgb_pixel(image, s->width, y, x, pixel, pixel, pixel);
-			}
-			else if (s->mode == ITERATION_COUNT)
-			{
-				color_pixel(image, s->width, y, x, palette[linear_map_index(k, 0, s->iterations, depth_scale, palette_size, s->index_mode)]);
-			}
-			else
-			{
-				histogram[k]++;
-				//escapedatum escapedatum = { k, mk };
-				//escapedatum escapedatum = { k, k };
-				escapedata[y][x] = k;
+			mk *= depth_scale;*/
+			float mu = mk - (int)mk;
+			switch (s->mode) {
+				case GREYSCALE:
+				{
+					channel pixel = linear_map_channel(k, 0, s->iterations, depth_scale, s->index_mode);
+					//comment out next 2 lines to not use linear interpolation
+					channel pixel2 = linear_map_channel((((k + 1) > s->iterations) ? s->iterations : k + 1), 0, s->iterations, depth_scale, s->index_mode);
+					pixel = pixel * (1.0f - mu) + pixel2 * (mu);
+					rgb_pixel(image, s->width, y, x, pixel, pixel, pixel);
+					/*channel color1[3], color2[3];
+					lerp(rgb, color_from_rgb(color1, pixel, pixel, pixel), color_from_rgb(color2, pixel2, pixel2, pixel2), mu);
+					color_pixel(image, s->width, y, x, rgb);*/
+				}
+				break;
+				case ITERATION_COUNT:
+				{
+					size_t idx1 = linear_map_index(k, 0, s->iterations, depth_scale, palette_size, s->index_mode);
+					size_t idx2 = linear_map_index((((k + 1) > s->iterations) ? s->iterations : k + 1), 0, s->iterations, depth_scale, palette_size, s->index_mode);
+					lerp(rgb, palette[idx1], palette[idx2], mu);
+					color_pixel(image, s->width, y, x, rgb);
+					//for use without linear interpolation
+					//color_pixel(image, s->width, y, x, palette[idx1]);
+				}
+				break;
+				case DEM:
+				{
+					float dist = fabsf(sqrtf(m2 / (dzr * dzr + dzi * dzi)) * logf(m2));
+					dist = isnan(dist) ? 0 : ((!isfinite(dist)) ? distmax : dist);
+					distmax = (distmax < dist) ? dist : distmax;
+					channel pixel = linear_map_channel(dist, 0.0f, distmax, depth_scale, s->index_mode);
+					rgb_pixel(image, s->width, y, x, pixel, pixel, pixel);
+				}
+				break;
+				default:
+				{
+					histogram[k]++;
+					//escapedatum escapedatum = { k, mk };
+					//escapedatum escapedatum = { k, k };
+					escapedata[y][x] = k;
+				}
 			}
 		}
 	}
@@ -236,8 +266,8 @@ int main(int argc, char* argv[])
 		spec.is_point_width = false,
 		spec.iterations = 256,
 		spec.bailout_sq = 4.0f,
-		spec.mode = GREYSCALE,
-		spec.index_mode = LINEAR
+		spec.mode = DEM,
+		spec.index_mode = SQRT
 	};
 
 	palette_size = spec.max_color_value;

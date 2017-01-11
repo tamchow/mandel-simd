@@ -9,7 +9,7 @@ typedef struct fpair {
 
 typedef enum ColorMode
 {
-	GREYSCALE = 1, ITERATION_COUNT = 2, HISTOGRAM = 3
+	GREYSCALE = 1, ITERATION_COUNT = 2, HISTOGRAM = 3, DEM = 4
 } ColorMode;
 
 typedef struct Size_tFloatPair{

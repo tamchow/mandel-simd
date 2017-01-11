@@ -7,7 +7,7 @@ typedef channel* color;
 
 typedef enum Scaling_Modes
 {
-	SQRT, LOG, LINEAR
+	SQRT, LOG, LINEAR, DIRECT
 } Scaling_Mode;
 
 inline color lerp(color result, color fromcolor, color tocolor, float bias);
