@@ -1,50 +1,39 @@
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "color.h"
-extern inline void color_pixel(channel* image, size_t scan, size_t y, size_t x, color rgb)
+extern inline void rgbPixel(channel* image, int scan, int y, int x, rgb color)
 {
-	for (int i = 0; i < 3; ++i) {
-		image[y * scan * 3 + x * 3 + i] = rgb[i];
-	}
+	colorPixel(image, scan, y, x, color.r, color.g, color.b);
 }
 
-extern inline void rgb_pixel(channel* image, size_t scan, size_t y, size_t x, channel r, channel g, channel b)
+extern inline void colorPixel(channel* image, int scan, int y, int x, channel r, channel g, channel b)
 {
 	image[y * scan * 3 + x * 3 + 0] = r;
 	image[y * scan * 3 + x * 3 + 1] = g;
 	image[y * scan * 3 + x * 3 + 2] = b;
 }
 
-extern inline color color_from_rgb(color color, channel r, channel g, channel b)
+extern inline rgb* packRGB(rgb* result, channel r, channel g, channel b)
 {
-	color[0] = r;
-	color[1] = g;
-	color[2] = b;
-	return color;
+
+	result->r = r;
+	result->g = g;
+	result->b = b;
+	return result;
 }
 
-extern inline void rgb_from_color(color color, channel* r, channel* g, channel* b)
+extern inline void unpackRGB(rgb color, channel* r, channel* g, channel* b)
 {
-	*r = color[0];
-	*g = color[1];
-	*b = color[2];
+	*r = color.r;
+	*g = color.g;
+	*b = color.b;
 }
-
-/*
-Equivalent of indexing into a 256-level greyscale palette
-*/
-extern inline channel linear_map_channel(float val, float min, float max, float density, Scaling_Mode mode)
-{
-	return (channel) linear_map_index(val, min, max, density, 256, mode);
-}
-
 //Grossly optimize this based on chosen-use case - lots of redundant computations are being done here
-extern inline size_t linear_map_index(float val, float min, float max, float density, size_t colors, Scaling_Mode mode)
+extern inline int normalizeIndex(float val, float min, float max, float density, int rgbs)
 {
-	assert((max >= min) && (val <= max) && (val >= min));
+	assert(max >= min && val <= max && (val >= min));
 	/*if(!((max >= min) && (val <= max) && (val >= min)))
 	{
 		printf("%f<=%f<=%f", min, val, max);
@@ -58,43 +47,28 @@ extern inline size_t linear_map_index(float val, float min, float max, float den
 	{
 		return 0;
 	}
-	if(val ==  max)
+	if (val == max)
 	{
-		return colors-1;
+		return rgbs - 1;
 	}
-	switch (mode) {
-	case  DIRECT:
-		return (((size_t)(val * density)) % colors);
-	case LINEAR:
-		return ((size_t)(((val - min) / (max - min)) * density) % colors);
-	case LOG:
-		if(min == 0 || min == 1)
-		{
-			return ((size_t)((logf(val) / logf(max)) * density) % colors);
-		}
-		return ((size_t)((logf(val / min) / logf(max / min)) * density) % colors);
-	case SQRT:
-	{
-		float minsqrt = sqrtf(min);
-		return ((size_t)(((sqrtf(val) - minsqrt) / (sqrtf(max) - minsqrt)) * density) % colors);
-	}
-	}
+	float minsqrt = sqrtf(min);
+	return (int)((sqrtf(val) - minsqrt) / (sqrtf(max) - minsqrt) * density) % rgbs;
 }
 /*
 Also try (from Wikipedia article on linear interpolation):
 
-    // Imprecise method, which does not guarantee v = v1 when t = 1, due to floating-point arithmetic error.
+	// Imprecise method, which does not guarantee v = v1 when t = 1, due to floating-point arithmetic error.
 	// This form may be used when the hardware has a native fused multiply-add instruction.
 	float lerp(float v0, float v1, float t) {
 		return v0 + t * (v1 - v0);
 	}
 */
-extern inline color lerp(color result, color fromcolor, color tocolor, float bias)
+extern inline rgb* lerp(rgb* result, rgb fromColor, rgb toColor, float bias)
 {
-	assert((bias >= 0) && (bias <= 1));
-	for (int i = 0; i < 3; ++i)
-	{
-		result[i] = (channel)(fromcolor[i] * (1.0f - bias) + tocolor[i] * (bias));
-	}
+	bias = fabsf(bias);
+	bias = bias - (int)bias;
+	result->r = (channel)(toColor.r + (fromColor.r - toColor.r) * bias);
+	result->g = (channel)(toColor.g + (fromColor.g - toColor.g) * bias);
+	result->b = (channel)(toColor.b + (fromColor.b - toColor.b) * bias);
 	return result;
 }

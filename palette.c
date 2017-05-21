@@ -6,10 +6,10 @@ int load_palette(FILE* input)
 	{
 		return IOERR_NOFILE;
 	}
-	fscanf_s(input, "%zu", &palette_size);
-	for(size_t i = 0; i < palette_size; ++i)
+	fscanf_s(input, "%d", &palette_size);
+	for(int i = 0; i < palette_size; ++i)
 	{
-		if (!fscanf_s(input, "%zu", &palette[i]))
+		if (!fscanf_s(input, "%hhu,%hhu,%hhu", &palette[i].r, &palette[i].g, &palette[i].b))
 		{
 			return IOERR_EOF;
 		}
@@ -23,10 +23,10 @@ int save_palette(FILE* output)
 	{
 		return IOERR_NOFILE;
 	}
-	fprintf(output, "%zu", palette_size);
-	for (size_t i = 0; i < palette_size; ++i)
+	fprintf(output, "%d", palette_size);
+	for (int i = 0; i < palette_size; ++i)
 	{
-		if (!fprintf(output, "%zu", &palette[i]))
+		if (!fprintf(output, "%hhu,%hhu,%hhu", palette[i].r, palette[i].g, palette[i].b))
 		{
 			return IOERR_EOF;
 		}
