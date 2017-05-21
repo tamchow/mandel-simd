@@ -1,7 +1,5 @@
-# Mandelbrot Set in SSE, AVX, and NEON
+#Mandelbrot Set in Pure C with OpenMP
 
-This is an example of implementing the mandelbrot set in SSE, AVX, and
-NEON (ARM) intrinsics. On x86, it's fast enough to render the
-Mandelbrot set at 256 iterations at 60 FPS.
+Reimplementation branch for incorporating coloring techniques.
 
-* Further reading: [Mandelbrot Set with SIMD Intrinsics](http://nullprogram.com/blog/2015/07/10/)
+This one doesn't use intrinsics and is deliberately extremeely simplified to focus on the differences needed for coloring.
