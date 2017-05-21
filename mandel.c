@@ -34,7 +34,6 @@ double BenchmarkClockDelta(BenchmarkClock end, BenchmarkClock begin)
 
 #endif
 
-#include "getopt.h"
 #include "mandel.h"
 #include "palette.h"
 

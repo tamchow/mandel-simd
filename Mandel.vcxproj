@@ -142,12 +142,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="color.c" />
-    <ClCompile Include="getopt.c" />
     <ClCompile Include="mandel.c" />
     <ClCompile Include="palette.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="getopt.h" />
     <ClInclude Include="color.h" />
     <ClInclude Include="mandel.h" />
     <ClInclude Include="palette.h" />
