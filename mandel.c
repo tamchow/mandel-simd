@@ -1,207 +1,201 @@
 #define _CRT_SECURE_NO_WARNINGS 1
 
-#ifdef _WIN32
-
-#include <Windows.h>
-#endif
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 #include "color.h"
-
-#ifdef _WIN32
-
-typedef LARGE_INTEGER BenchmarkClock;
-
-
-void GetBenchmarkClock(BenchmarkClock* timestamp)
-{
-	QueryPerformanceCounter(timestamp);
-}
-
-double BenchmarkClockDelta(BenchmarkClock end, BenchmarkClock begin)
-{
-	static LARGE_INTEGER frequency = { 0 };
-
-	if (!frequency.QuadPart)
-		QueryPerformanceFrequency(&frequency);
-
-
-	return 1e3 * ((double)end.QuadPart - (double)begin.QuadPart) / (double)frequency.QuadPart;
-}
-
-#endif
-
-#include "mandel.h"
 #include "palette.h"
 
-//#define DEBUG 1
+#include "mandel.h"
 
-void mandel_basic(unsigned char* image, struct spec* s);
+ //#define DEBUG 1
+
+static const int MaxExtraIterations = 3;
 
 /*
-* source = {{x, xwidth}, {y, ywidth}}
-* range = {{xmin, xmax}, {ymin, ymax}}
+* source = {{centreX, centreY}, {width, height}}
+* range = {{xMin, yMin}, {xMax, yMax}}
 */
-fpair* points_width_to_ranges(fpair range[2], fpair source[2])
-{
-	for (int i = 0; i < 2; ++i)
+void convertPointWidthToBounds(Configuration* configuration) {
+	if (configuration->isPointWidth)
 	{
-		float halfrange = source[i].y / 2.0f;
-		range[i].x = source[i].x - halfrange;
-		range[i].y = source[i].x + halfrange;
-	}
-	return range;
-}
-
-void convert_point_width_spec_to_range(spec* s) {
-	if (s->is_point_width)
-	{
-		fpair range[2], source[2] = { s->xlim, s->ylim };
-		points_width_to_ranges(range, source);
-		s->xlim = range[0];
-		s->ylim = range[1];
+		float halfWidth = configuration->bounds.end.x * 0.5f;
+		float halfHeight = configuration->bounds.end.y * 0.5f;
+		float centreX = configuration->bounds.start.x, centreY = configuration->bounds.start.y;
+		fpair start = { centreX - halfWidth, centreY - halfHeight },
+			end = { centreX + halfWidth, centreY + halfHeight };
+		region bounds = {
+			bounds.start = start,
+			bounds.end = end
+		};
+		configuration->bounds = bounds;
+		configuration->isPointWidth = false;
 	}
 }
 
-// best ZP_SIZE experimentally is 2, so we can hard-code this too, 
-// but it actually isn't faster hard-coded, but about 10-15ms slower @standard config
-inline int any_of_and(float v1, float v2, float *vs1, float *vs2, int vs_size)
+void basicMandelbrot(channel* image, Configuration* configuration, const rgb* palette, const int paletteSize)
 {
-	for (int i = 0; i < vs_size; ++i)
-	{
-		if (v1 == vs1[i] && v2 == vs2[i]) return 1;
-	}
-	return 0;
-}
+	convertPointWidthToBounds(configuration);
 
-// hard-coded for 20ms faster speed @standard config
-inline void populate_periodicity(float *zrp, float *zip, int size, float zr, float zi)
-{
-	int more_size = size;
-	while (size)
-	{
-		zrp[size] = zrp[--size];
-		zip[more_size] = zip[--more_size];
-	}
-	zrp[0] = zr;
-	zip[0] = zi;
-}
+	float toleranceSquared = tolerance * tolerance;
+	//float addend = ((configuration->mode == SMOOTH) ? MaxExtraIterations : 0);
 
-#define ZP_SIZE 2
+	int startX = configuration->startX, startY = configuration->startY;
+	int width = configuration->width, height = configuration->height;
+	float realStart = configuration->bounds.start.x, imaginaryStart = configuration->bounds.start.y;
+	float xscale = fabsf(configuration->bounds.end.x - realStart) / width;
+	float yscale = -fabsf(configuration->bounds.end.y - imaginaryStart) / height;
+	float gradientScale = (isnan(configuration->gradientScale)) ? paletteSize - 1 : configuration->gradientScale;
+	float gradientShift = configuration->gradientShift;
+	float bailout = configuration->bailout;
+	float indexScale = configuration->indexScale, indexWeight = configuration->fractionWeight;
+	int maxIterations = configuration->iterations;
+	float oneOverLog2 = 1.0f / logf(2.0f);
+	float bailoutSquared = bailout * bailout;
 
-void mandel_basic(unsigned char* image, spec* s)
-{
-	FILE* logFile = fopen("./countdata.csv", "w");
-	convert_point_width_spec_to_range(s);
-	float xscale = fabsf(s->xlim.y - s->xlim.x) / s->width;
-	float yscale = fabsf(s->ylim.y - s->ylim.x) / s->height;
-	float depth_scale = palette_size - 1.0f;
-	float log_2 = logf(2.0f);
-	float denom = 2.0f*2.0f*logf(s->bailout_sq);
-	channel rgb[3];
-	//#pragma omp parallel for schedule(dynamic)
-	for (int y = s->startY; y < s->height; y++)
+	float logMinIterations = logf(configuration->minimumIterations);
+	float oneOverLogBase = 1.0f / (logf(maxIterations) - logMinIterations);
+	float halfOverLogBailout = 0.5 / logf(bailout);
+	ColorMode mode = configuration->mode;
+	int y;
+	#pragma omp parallel for schedule(dynamic, CHUNKS) num_threads(THREADS)
+	for (y = startY; y < height; ++y)
 	{
-		for (int x = s->startX; x < s->width; x++)
+		for (int x = startX; x < width; ++x)
 		{
-			float cr = x * xscale + s->xlim.x;
-			float ci = -(y * yscale + s->ylim.x);
-			float zr = 0, zi = 0;//, zrp0 = zr, zrp1 = zr, zip0 = zi, zip1 = zi;
-			float dzr = 0, dzi = 0;
-			float m2 = zr * zr + zi * zi;
-			float zrp[ZP_SIZE] = { zr, zr };
-			float zip[ZP_SIZE] = { zi, zi };
-			int k = 0;
-			while (k < s->iterations && m2 < s->bailout_sq) {
-				float zr1 = zr * zr - zi * zi + cr;
-				float zi1 = zr * zi + zr * zi + ci;
-				float dzr1 = 2.0f * (zr * dzr - zi * dzi) + 1.0f;
-				float dzi1 = 2.0f * (zr * dzi + dzr * zi);
+			float cr = x * xscale + realStart;
+			float ci = y * yscale - imaginaryStart;
+			float zrCurrent = 0.0f, ziCurrent = 0.0, zrPrevious = 0, ziPrevious = ziCurrent;
+			float modulusSquared = 0.0f;
+			int iterations = 0;
+			//float expIter = 0.0f;
+			while (modulusSquared < bailoutSquared && iterations < maxIterations) {
+				float zrNext = zrCurrent * zrCurrent - ziCurrent * ziCurrent + cr;
+				float ziNext = 2 * zrCurrent * ziCurrent + ci;
+				float drCurrent = zrNext - zrCurrent, drPrevious = zrNext - zrPrevious,
+					diCurrent = ziNext - ziCurrent, diPrevious = ziNext - ziPrevious;
 				//periodicity checking - can speed up the code
-				if (zr1 == zr && zi1 == zi || any_of_and(zr1, zi1, zrp, zip, ZP_SIZE))
+				if (((drCurrent*drCurrent + diCurrent*diCurrent) < toleranceSquared) ||
+					((drPrevious*drPrevious + diPrevious*diPrevious) < toleranceSquared))
 				{
-					k = s->iterations;
+					iterations = maxIterations;
 					break;
 				}
-				/*if (((zr1 == zr) && (zi1 == zi)) || ((zr1 == zrp0) && (zi1 == zip0)) || ((zr1 == zrp1) && (zi1 == zip1)))
+				zrPrevious = zrCurrent;
+				ziPrevious = ziCurrent;
+				zrCurrent = zrNext;
+				ziCurrent = ziNext;
+				modulusSquared = zrCurrent * zrCurrent + ziCurrent * ziCurrent;
+				//expIter += exp(-sqrt(modulusSquared));
+				++iterations;
+			}
+			//			if (mode == SMOOTH) {
+			//				// Run a few more iterations to reduce error in fractional iteration count
+			//				for (int totalIterations = iterations + MaxExtraIterations; iterations < totalIterations; ++iterations)
+			//				{
+			//					float zrNext = zrCurrent * zrCurrent - ziCurrent * ziCurrent + cr;
+			//					float ziNext = 2 * zrCurrent * ziCurrent + ci;
+			//					zrCurrent = zrNext;
+			//					ziCurrent = ziNext;
+			//					modulusSquared = zrCurrent * zrCurrent + ziCurrent * ziCurrent;
+			//				}
+			//			}
+			rgb color;
+			float index = iterations;
+			float bias = 0.0f;
+			if (mode == SMOOTH && iterations < maxIterations)
+			{
+				float smoothed = logf(logf(modulusSquared) * halfOverLogBailout) * oneOverLog2;
+				float temporaryIndex = iterations + 1 - indexWeight * smoothed;
+				temporaryIndex = isnan(temporaryIndex) ? 0.0f : (isinf(temporaryIndex) ? maxIterations : temporaryIndex);
+				bias = temporaryIndex - (long)temporaryIndex; // Retrieve fractional part
+				index = (float)(long)temporaryIndex; // Truncation
+			}
+			//float scaledIterations = ((indexScale * index) - scaledMinIterations) / (scaledMaxIterations - scaledMinIterations);
+			float scaledIterations = indexScale * (logf(index) - logMinIterations) * oneOverLogBase;
+			int actualIndex = (int)(scaledIterations * gradientScale + gradientShift) % paletteSize;
+			if (iterations >= maxIterations)
+			{
+				color = palette[0];
+			}
+			else
+			{
+				rgb fromColor = palette[actualIndex];
+				if (mode == NO_SMOOTH || bias == 0.0) {
+					color = fromColor;
+				}
+				else
 				{
-					k = s->iterations;
-					break;
-				}*/
-				//populate_periodicity(zrp, zip, ZP_SIZE, zr, zi);
-				zrp[1] = zrp[0];
-				zip[1] = zip[0];
-				zrp[0] = zr;
-				zip[0] = zi;
-				/*zrp1 = zrp0;
-				zip1 = zip0;
-				zrp0 = zr;
-				zip0 = zi;*/
-				dzr = dzr1;
-				dzi = dzi1;
-				zr = zr1;
-				zi = zi1;
-				m2 = zr * zr + zi * zi;
-				++k;
+					rgb toColor = palette[(actualIndex + 1) % paletteSize];
+					// lerp the colors if necessary
+					color.r = (channel)(toColor.r + (fromColor.r - toColor.r) * bias);
+					color.g = (channel)(toColor.g + (fromColor.g - toColor.g) * bias);
+					color.b = (channel)(toColor.b + (fromColor.b - toColor.b) * bias);
+				}
 			}
-			float mk = 0.0f;
-			if (k < s->iterations) {
-				mk = fabsf(k + 1 - logf(logf(m2) / denom) / log_2);
-			}
-			/*mk *= iter_scale;
-			mk = sqrtf(k);
-			mk *= depth_scale;*/
-			float mu = mk - (int)mk;
-			switch (s->mode) {
-				//test it out using grayscale
-			case NO_SMOOTH:
-			{
-				channel rgb = (channel)(k >= s->iterations ? 255 : ((float)k / s->iterations) * 255);
-				colorPixel(image, s->width, s->startY + y, s->startX + x, rgb, rgb, rgb);
-			}
-			break;
-			case SMOOTH:
-			{
-
-			}
-			break;
-			default: break;
-			}
+			int offset = RGB_BitDepth * (y * width + x);
+			image[offset] = color.r;
+			image[offset + 1] = color.g;
+			image[offset + 2] = color.b;
 		}
 	}
 }
 
-int main(int argc, char* argv[])
+int main(const int argc, const char* argv[])
 {
 	/* Config */
-	fpair xlim = { -2.5, 1.5 },
-		ylim = { -1.5, 1.5 };
-	spec spec = {
+	// Deep Zoom 1 - doesn't work
+//	fpair startPoint = { 0.27969303810093984, 0.00838423653868096 },
+//		endPoint = { 3.2768e-12, 3.2768e-12 };
+	// Zoom 1 - works
+//	fpair startPoint = { -0.1593247826659642, 1.0342115878556377 },
+//		endPoint = { 0.0515625, 0.0515625 };
+	// Overall - Definitely works
+	fpair startPoint = { -2.5, -1 },
+		endPoint = { 1, 1 };
+	region bounds = { startPoint, endPoint };
+	Configuration spec = {
 		spec.startX = 0,
 		spec.startY = 0,
-		spec.width = 640,
-		spec.height = 480,
-		spec.xlim = xlim,
-		spec.ylim = ylim,
-		spec.is_point_width = false,
+		spec.width = 3840,
+		spec.height = 2160,
+		spec.bounds = bounds,
+		spec.isPointWidth = false,
 		spec.iterations = 256,
-		spec.bailout_sq = 4.0f,
-		spec.mode = NO_SMOOTH
+		spec.bailout = 4.0f,
+		spec.mode = NO_SMOOTH,
+		spec.gradientScale = NAN,
+		spec.gradientShift = 0.0f,
+		spec.fractionWeight = 1.0f,
+		spec.indexScale = 1.0f,
+		spec.minimumIterations = 1
 	};
 
-	/* Render */
-	channel* image = malloc(spec.width * spec.height * 3 * sizeof(unsigned char));
+	int paletteSize = 769;
+	rgb* palette = calloc(paletteSize, sizeof(rgb));
 
-	mandel_basic(image, &spec);
+	FILE* paletteFile = fopen("./palette.txt", "r");
+
+	loadPalette(paletteFile, palette, paletteSize);
+
+	fclose(paletteFile);
+	/* Render */
+	channel* image = calloc(spec.width * spec.height * 3, sizeof(channel));
+
+	clock_t start = clock();
+	basicMandelbrot(image, &spec, palette, paletteSize);
+	clock_t end = clock();
+	float elapsedTimeInMilliSeconds = 1e3 * (end - start) / CLOCKS_PER_SEC;
+	printf("Time taken for execution = %f ms", elapsedTimeInMilliSeconds);
+	free(palette);
 
 	FILE* output = fopen("./img.ppm", "wb");
 	/* Write result */
 	fprintf(output, "P6\n%d %d\n%d\n", spec.width, spec.height, 255);
-	fwrite(image, sizeof(unsigned char), spec.width * spec.height * 3, output);
+	fwrite(image, sizeof(channel), spec.width * spec.height * RGB_BitDepth, output);
 	fclose(output);
 	free(image);
+	getchar();
 	return 0;
 }
