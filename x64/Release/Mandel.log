@@ -1,33 +1,4 @@
 ﻿  mandel.c
-C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt\time.h(35): warning C4820: '_timespec64': '4' bytes padding added after data member 'tv_nsec'
-C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt\time.h(42): warning C4820: 'timespec': '4' bytes padding added after data member 'tv_nsec'
-d:\programming\projects\mandel-simd\mandel.h(31): warning C4820: 'Configuration': '3' bytes padding added after data member 'isPointWidth'
-mandel.c(26): warning C4204: nonstandard extension used: non-constant aggregate initializer
-mandel.c(27): warning C4204: nonstandard extension used: non-constant aggregate initializer
-mandel.c(28): warning C4204: nonstandard extension used: non-constant aggregate initializer
-mandel.c(57): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-mandel.c(58): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-mandel.c(59): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
-mandel.c(105): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-mandel.c(157): warning C4204: nonstandard extension used: non-constant aggregate initializer
-mandel.c(158): warning C4204: nonstandard extension used: non-constant aggregate initializer
-mandel.c(189): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
-mandel.c(145): warning C4100: 'argv': unreferenced formal parameter
-mandel.c(145): warning C4100: 'argc': unreferenced formal parameter
-mandel.c(202): warning C4710: 'int fprintf(FILE *const ,const char *const ,...)': function not inlined
-  C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt\stdio.h(826): note: see declaration of 'fprintf'
-mandel.c(202): warning C4710: 'int printf(const char *const ,...)': function not inlined
-  C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt\stdio.h(946): note: see declaration of 'printf'
   Generating code
-c:\program files (x86)\windows kits\10\include\10.0.15063.0\ucrt\stdio.h(1061): warning C4710: '__local_stdio_scanf_options': function not inlined
-c:\program files (x86)\windows kits\10\include\10.0.15063.0\ucrt\stdio.h(641): warning C4710: '__local_stdio_printf_options': function not inlined
-c:\program files (x86)\windows kits\10\include\10.0.15063.0\ucrt\stdio.h(1061): warning C4710: '__local_stdio_scanf_options': function not inlined
-c:\program files (x86)\windows kits\10\include\10.0.15063.0\ucrt\stdio.h(641): warning C4710: '__local_stdio_printf_options': function not inlined
-c:\program files (x86)\windows kits\10\include\10.0.15063.0\ucrt\stdio.h(641): warning C4710: '__local_stdio_printf_options': function not inlined
-d:\programming\projects\mandel-simd\palette.c(10): warning C4710: 'fscanf': function not inlined
-d:\programming\projects\mandel-simd\palette.c(13): warning C4710: 'fscanf': function not inlined
-d:\programming\projects\mandel-simd\mandel.c(39): warning C4711: function 'convertPointWidthToBounds' selected for automatic inline expansion
-d:\programming\projects\mandel-simd\mandel.c(190): warning C4710: 'printf': function not inlined
-d:\programming\projects\mandel-simd\mandel.c(195): warning C4710: 'fprintf': function not inlined
   Finished generating code
   Mandel.vcxproj -> D:\Programming\Projects\mandel-simd\x64\Release\Mandel.exe
