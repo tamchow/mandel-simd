@@ -10,4 +10,5 @@
 #define  IOERR_EOF -2;
 
 rgb* loadPalette(FILE* input, int* paletteSize);
-int savePalette(FILE* output, rgb* palette, int paletteSize);
+const rgb** repeatPalette(const rgb* palette, const int paletteCount);
+rgb** padRepeatedPaletteWithLastEntry(rgb** palette, const int lastOccupiedIndex, const int paletteCount);

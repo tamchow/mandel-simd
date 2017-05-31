@@ -1,15 +1,41 @@
-CFLAGS = -std=c11 -Wall -Wextra -O3 -Ofast -fopenmp
+RELEASE_FLAGS = -std=c11 -O3 -fopenmp -m64 -march=native -mavx -msahf -mcx16
+DEBUG_FLAGS = -std=c11 -Wall -Wextra -g -O0 -fopenmp -m64
+LDFLAGS = -lm
 
-mandel.x86 : mandel.c mandel_color.o mandel_palette.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+all : release debug
 
-mandel_color.o : color.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+release : ./linux/x64/bin/release/mandel
 
-mandel_palette.o : palette.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+debug : ./linux/x64/bin/debug/mandel
+
+remake : clean all
+
+./linux/x64/bin/release/mandel : mandel.c ./linux/x64/obj/release/palette.o ./linux/x64/obj/release/imageOutput.o ./linux/x64/obj/release/targa.o
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS)
+
+./linux/x64/obj/release/palette.o : palette.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
+
+./linux/x64/obj/release/imageOutput.o : imageOutput.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
+
+./linux/x64/obj/release/targa.o : targa.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
+
+./linux/x64/bin/debug/mandel : mandel.c ./linux/x64/obj/debug/palette.o ./linux/x64/obj/debug/imageOutput.o ./linux/x64/obj/debug/targa.o
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS)
+
+./linux/x64/obj/debug/palette.o : palette.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
+
+./linux/x64/obj/debug/imageOutput.o : imageOutput.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
+
+./linux/x64/obj/debug/targa.o : targa.c
+	$(CC) $(RELEASE_FLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS) -c
 
 clean :
-	$(RM) mandel.x86 mandel_color.o mandel_palette.o
+	$(RM) ./linux/x64/bin/release/mandel  ./linux/x64/obj/release/palette.o ./linux/x64/obj/release/imageOutput.o ./linux/x64/obj/release/targa.o \
+	./linux/x64/bin/debug/mandel ./linux/x64/obj/debug/palette.o ./linux/x64/obj/debug/imageOutput.o ./linux/x64/obj/debug/targa.o
 
-.PHONY : clean
+.PHONY : all release debug remake clean

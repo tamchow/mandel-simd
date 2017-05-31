@@ -1,9 +1,10 @@
 #pragma once
+#include <stdint.h>
 
 /*
  * Pretty obvious stuff for modeling colors and increasing understandability of code tailored for this domain
  */
-typedef unsigned char channel;
+typedef uint8_t channel;
 
 /*
  * Models a 24-bit RGB color.
@@ -14,3 +15,5 @@ typedef struct rgb {
 	channel g;
 	channel b;
 } rgb;
+
+#define RGB_BitDepth 3

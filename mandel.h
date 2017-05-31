@@ -1,17 +1,37 @@
 #pragma once
 #include <stdbool.h>
 
-// OpenMP parameters, change for system
-#define THREADS  4	// The number of total system cores (hyperthreading inclusive)
-#define  CHUNKS 256 // Should be close to `Configuration.maximumIterations`
+//#define PPM_OUTPUT
 
-const int RGB_BitDepth = 3;
+#include "imageOutput.h"
+
+// OpenMP parameters, change for system
+
+// The number of total system cores (hyperthreading inclusive)
+#define THREADS  4
+// Should be a power of 2, to facilitate loop unrolling by the compiler, and auto-vectorization
+// Lower values generally work better (i.e., faster) - 1 is the minimum.
+// Unfrtunately these need to be specified at compile time
+#define  CHUNKS 1
+
+#define FILE_NAME_MAX_LENGTH 35 // Assume max value for `count` will have no more than 9 digits
+
+#ifdef HIGH_PRECISION
+#define fp double
+#define log log
+#define fabs fabs
+#else
+#define fp float
+#define log logf
+#define fabs fabsf
+#endif
+
 
 /*
  * Poor man's `Tuple<float, float>`
  */
 typedef struct fpair {
-	float x, y;
+	fp x, y;
 } fpair;
 
 /*
@@ -37,6 +57,10 @@ typedef struct fpair {
  */
 typedef struct region {
 	fpair start, end;
+	// Indicates whether this region denotes a rectangle in the complex plane indicating the region to be rendered,
+	// or whether it holds details about a particular central point and how mcuh to render around it.
+	// The latter is useful for zooming.
+	bool isPointWidth;
 } region;
 
 /*
@@ -52,55 +76,93 @@ typedef enum ColorMode
 
 typedef struct Configuration {
     /* Image Specification */
-	// Screen-space starting X coordinate of section to render - [0, width)
+	/*
+	* The coordinates below are of `int`, not `uint32_t` or `size_t`, to reflect the limits of the PNG file format on file-size.
+	* Why be concerned about PNG when we output to PPM?
+	* Simple - no-one cares about the raw PPM files - they're converted to PNG for archival or export.
+	* Note - export the PPM files to PNG or TIFF, not JPEG or GIF - as the latter have lossy compression and can reduce image detail.
+	*/
+	
+	// Screen-space starting X coordinate of section to render
 	int startX;
-	// Screen-space starting Y coordinate of section to render - [0, height)
+	// Screen-space starting Y coordinate of section to render
 	int startY;
 	// Screen-space width of section to render
     int width;
 	// Screen-space height of section to render
     int height;
-    /* Fractal Specification */
+	// Number of chunks to try filling in the x-direction
+	int xChunks;
+	// Number of chunks to try filling in the y-direction
+	int yChunks;
+    
+	/* Fractal Specification */
+	
 	// Contains the region of the complex plane to render. See comment on definition.
 	region bounds;
-	// Indicates whether `bounds` above denotes a rectangle in the complex plane indicating the region to be rendered,
-	// or whether it holds details about a particular central point and how mcuh to render around it.
-	// The latter is useful for zooming.
-	bool isPointWidth;
-	// Obvious Mandelbrot stuff	-
-	// Do not make negative or 0!
+	
+	// Obvious Mandelbrot stuff
     int maximumIterations;
-	float bailout;
+	// Lower values speed up execution (not by much) but reduce image quality - the value used below is an experimental optimum.
+	// Increase the bailout for zooming in and `ColorMode == SMOOTH`, and possibly vice-versa.
+	fp bailout;
+	
+	/**
+	* A mathematical error tolerance limit - an `epsilon` value.
+	*
+	* This influences early bailout, so lower values correspond to faster execution and vice-versa.
+	*
+	* 10^-7 is about the safe minimum for `float`s.
+	* Lower epsilon => more precision.
+	* The value used below is the maximum precision of a `float` (32-bit binary floating point) -
+	* don't decrease this beyond 10^-8, or increase it beyond 10^-3,
+	* rendering will be either very much errorneous in the 1st case and might not work at all in the 2nd (even if it does, you stand to lose detail).
+	*
+	* This should be decreased (within the limits stated above) when zooming in (vice-versa when zooming out) -
+	* as higher precision is required in those cases
+	*/
+	fp tolerance;
+	
 	// SMOOTH = Slow, NO_SMOOTH = fast. See comment on definition.
 	ColorMode mode;
+	
 	/*Image specifications*/
+	
 	// Implements normalized to palette index scaling
 	// `gradientScale` being `NAN` is a signal that it should be automatically calculated - leave at NAN.
-	// Do not make negative or 0!
-	float gradientScale;
+	fp gradientScale;
 	// Implements primary palette offset - leave at 0.
-	// Do not make negative!
-	float gradientShift;
+	int gradientShift;
+	
 	// Implements palette-rolling (color repetition) - 
 	// Increase at higher iteration counts to get more variety in the image, leave at 1 otherwise.
-	// Do not make negative or 0!
-	float indexScale;
+	//
+	// Note: This also multiplies the error in the normalized iteration count itself, 
+	// so beyond about 1.4, banding becomes noticeable but not horrible up until about 7.0
+	fp indexScale;
 	// Scales the significance of the fraction in the normalized iteration count, leave at 1.
-	// Do not make negative or 0!
-	float fractionWeight;
+	fp fractionWeight;
+	
 	// Lower cutoff iteration value - increase for bettwer detail in deep zooms (>10^4x) close to the set's boundary. Leave at 1 otherwise.
-	// Do not make negative or 0!
 	int minimumIterations;
 } Configuration;
 
-/**
- * A mathematical error tolerance limit - an `epsilon` value.
- * This is about the safe minimum for `float`s.
- * Lower epsilon => more precision.
- * The value used below is the maximum precision of a `float` (32-bit binary floating point) -
- * don't decrease this beyond 10^-8, or increase it beyond 10^-5,
- * rendering will be either very much errorneous in the 1st case and might not work at all in the 2nd (even if it does, you stand to lose detail).
+/*
+ * Clamping (value-restricting) functions,
+ * Defined as a macro so it can be type-generic (work for both `int`s and `float`s, in our case).
  */
-float tolerance = 1e-7;
+#define clamp(value, min, max) ( ((value) < (min)) ? (min) : ( ((value) > (max)) ? (max) : (value) ) )
+
+#define clampAbove(value, min) ( ((value) < (min)) ? (min) : (value) )
 
 void convertPointWidthToBounds(Configuration* configuration);
+
+void basicMandelbrot(channel* image, Configuration* configuration, const rgb* palette, const int paletteSize);
+
+void basicMandelbrotSequence(const size_t count, channel** images, Configuration** configurations, const rgb** palettes, const int* paletteSizes);
+
+void basicMandelbrotSequenceSinglePalette(const size_t count, channel** images, Configuration** configurations, const rgb* palette, const int paletteSize);
+
+char** generateSequentialFileNames(int count);
+
+Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configurationsCount);

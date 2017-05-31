@@ -3,59 +3,84 @@
 #include <stdlib.h>
 #include "palette.h"
 
+#define PAL_COLOR_LENGTH (RGB_BitDepth + 1)
+
 /*
- * Read in a palette from a text file on disk, stored in the format exported by the C# version.
- * Essentially:
- * Line 1: Number of colors in palette - 1 (because the `MaxIterationColor` in C# is not part of it's palette but it's exported along with the palette)
- * Line 2 to Line <Number of colors in palette>: RGB triplets as unsigned byte literals separated by commas, i.e., <Red>,<Greem>,<Blue>
+ * Read in a palette from a text file on disk, stored in Microsoft PAL format
+ * Format specification here: http://worms2d.info/Palette_file
  */
 rgb* loadPalette(FILE* input, int* paletteSize)
 {
-	if(!input)
+	if (!input)
 	{
 		// Illegal file pointer - potentially doesn't exist or is not readable
 		return NULL;
 	}
-	int newPaletteSize = 0;
-	fscanf(input, "%d", &newPaletteSize);
-	// Account for `maxIterationColor` exported at the start of the palette by the C# version,
-	// but not recorded in the count read above.
-	// Alsp avoid an extra pointer dereference,	
-	newPaletteSize = (*paletteSize = newPaletteSize + 1);
-	rgb* palette = calloc(newPaletteSize, sizeof(rgb));
-	for(int i = 0; i < newPaletteSize; ++i)
+	uint16_t newPaletteSize = 0;
+	// Skip header and irrelevant sections
+	long startOffset = 4 + 4 + 4 + 4 + 4 + 2;
+	if (fseek(input, startOffset, SEEK_CUR) != 0)
 	{
-		if (!fscanf(input, "%hhu,%hhu,%hhu", &palette[i].r, &palette[i].g, &palette[i].b))
+		return NULL;
+	}
+	if (!fread((void*)&newPaletteSize, sizeof(uint16_t), 1, input))
+	{
+		return NULL;
+	}
+	
+	// Avoid an extra pointer dereference,	
+	*paletteSize = (int)newPaletteSize;
+	rgb* palette = calloc(newPaletteSize, sizeof(rgb));
+	// Avoid pesky, if rare, segfaults and memory allocation issues.
+	if (palette != NULL) {
+		for (uint16_t i = 0; i < newPaletteSize; ++i)
 		{
-			// Unexpected EOF - handle it nicely!
-			// Set the palette size to wherever we had to stop
-			*paletteSize = i;
-			// Ensure that we don't leak memory by using more than what we need
-			palette = realloc(palette, *paletteSize);
-			// Exit
-			break;
+			channel color[PAL_COLOR_LENGTH] = { 0,0,0,0 };
+			if (!fread((void*)color, sizeof(channel), PAL_COLOR_LENGTH, input))
+			{
+				// Unexpected EOF - handle it nicely!
+				// Set the palette size to wherever we had to stop
+				*paletteSize = i;
+				// Ensure that we don't leak memory by using more than what we need
+				palette = realloc(palette, (*paletteSize * sizeof(rgb)));
+				// Exit	loop
+				break;
+			}
+			palette[i].r = color[0];
+			palette[i].g = color[1];
+			palette[i].b = color[2];
 		}
 	}
 	return palette;
 }
 
-/*
- * A function to export a palette in the format detailed above;
- * Not used in this implementation.
- */
-int savePalette(FILE* output, rgb* palette, int paletteSize)
+const rgb** repeatPalette(const rgb* palette, const int paletteCount)
 {
-	if (!output)
+	const rgb** palettes = calloc((size_t)paletteCount, sizeof(rgb*));
+	// Avoid pesky segfaults and acces violations
+	if (palettes != NULL)
 	{
-		return IOERR_NOFILE;
-	}
-	fprintf(output, "%d", paletteSize);
-	for (int i = 0; i < paletteSize; ++i)
-	{
-		if (!fprintf(output, "%hhu,%hhu,%hhu", palette[i].r, palette[i].g, palette[i].b))
+		for (int index = 0; index < paletteCount; ++index)
 		{
-			return IOERR_EOF;
+			palettes[index] = palette;
 		}
 	}
-	return 0;
+	return palettes;
+}
+
+rgb** padRepeatedPaletteWithLastEntry(rgb** palettes, const int lastOccupiedIndex, const int paletteCount)
+{
+	// Avoid pesky segfaults and acces violations - doing some bounds checking to bail out early in case of erroneous input
+	if (lastOccupiedIndex >= 0 && lastOccupiedIndex < paletteCount)
+	{
+		palettes = realloc(palettes, (size_t)paletteCount);
+		if(palettes != NULL)
+		{
+			for (int index = lastOccupiedIndex; index < paletteCount; ++index)
+			{
+				palettes[index] = palettes[lastOccupiedIndex];
+			}
+		}
+	}
+	return palettes;
 }

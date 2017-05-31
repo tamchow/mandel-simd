@@ -28,6 +28,16 @@ $RECYCLE.BIN/
 .AppleDouble
 .LSOverride
 
+# Linux
+# =========================
+
+linux/
+
+# Log files
+# =========================
+
+*.log
+
 # Thumbnails
 ._*
 
