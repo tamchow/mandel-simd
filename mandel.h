@@ -91,10 +91,6 @@ typedef struct Configuration {
     int width;
 	// Screen-space height of section to render
     int height;
-	// Number of chunks to try filling in the x-direction
-	int xChunks;
-	// Number of chunks to try filling in the y-direction
-	int yChunks;
     
 	/* Fractal Specification */
 	
@@ -106,22 +102,6 @@ typedef struct Configuration {
 	// Lower values speed up execution (not by much) but reduce image quality - the value used below is an experimental optimum.
 	// Increase the bailout for zooming in and `ColorMode == SMOOTH`, and possibly vice-versa.
 	fp bailout;
-	
-	/**
-	* A mathematical error tolerance limit - an `epsilon` value.
-	*
-	* This influences early bailout, so lower values correspond to faster execution and vice-versa.
-	*
-	* 10^-7 is about the safe minimum for `float`s.
-	* Lower epsilon => more precision.
-	* The value used below is the maximum precision of a `float` (32-bit binary floating point) -
-	* don't decrease this beyond 10^-8, or increase it beyond 10^-3,
-	* rendering will be either very much errorneous in the 1st case and might not work at all in the 2nd (even if it does, you stand to lose detail).
-	*
-	* This should be decreased (within the limits stated above) when zooming in (vice-versa when zooming out) -
-	* as higher precision is required in those cases
-	*/
-	fp tolerance;
 	
 	// SMOOTH = Slow, NO_SMOOTH = fast. See comment on definition.
 	ColorMode mode;
@@ -145,6 +125,9 @@ typedef struct Configuration {
 	
 	// Lower cutoff iteration value - increase for bettwer detail in deep zooms (>10^4x) close to the set's boundary. Leave at 1 otherwise.
 	int minimumIterations;
+	// The number of iterations after which to do the periodicity check.
+	// `maximumIterations/8` is suggested by the fast Mandelbrot renderer AlmondBread.
+	int periodicityCheckIterations;
 } Configuration;
 
 /*

@@ -13,7 +13,8 @@
 * not liable for anything bad that might happen as a result of the
 * code.	 *
 *
-* Modified for exclusively little-endian systems.
+* Modified for exclusively little-endian systems,
+* with parts unconcerned with writing truecolor images discarded.
 * -------------------------------------------------------------------------*/
 
 #pragma once
@@ -86,18 +87,6 @@ typedef struct
 
 } tga_image;
 
-
-
-/* For decoding header bits ------------------------------------------------*/
-uint8_t tga_get_attribute_bits(const tga_image *tga);
-int tga_is_right_to_left(const tga_image *tga);
-int tga_is_top_to_bottom(const tga_image *tga);
-int tga_is_colormapped(const tga_image *tga);
-int tga_is_rle(const tga_image *tga);
-int tga_is_mono(const tga_image *tga);
-
-
-
 /* Error handling ----------------------------------------------------------*/
 typedef enum {
 	TGA_NOERR,
@@ -122,73 +111,11 @@ typedef enum {
 
 const char *tga_error(const tga_result errcode);
 
-
-
 /* Load/save ---------------------------------------------------------------*/
-tga_result tga_read(tga_image *dest, const char *filename);
-tga_result tga_read_from_FILE(tga_image *dest, FILE *file);
-tga_result tga_write(const char *filename, const tga_image *src);
 tga_result tga_write_to_FILE(FILE *file, const tga_image *src);
 
-
-
 /* Convenient writing functions --------------------------------------------*/
-tga_result tga_write_mono(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height);
-
-tga_result tga_write_mono_FILE(FILE *file, uint8_t *image,
-	const uint16_t width, const uint16_t height);
-
-tga_result tga_write_mono_rle(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height);
-
-tga_result tga_write_mono_rle_FILE(FILE *file, uint8_t *image,
-	const uint16_t width, const uint16_t height);
-
-tga_result tga_write_bgr(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-tga_result tga_write_bgr_FILE(FILE *file, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-tga_result tga_write_bgr_rle(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
 tga_result tga_write_bgr_rle_FILE(FILE *file, uint8_t *image,
 	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-/* These functions will use tga_swap_red_blue to MODIFY your image data */
-tga_result tga_write_rgb(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-tga_result tga_write_rgb_FILE(FILE *file, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-tga_result tga_write_rgb_rle(const char *filename, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-tga_result tga_write_rgb_rle_FILE(FILE *file, uint8_t *image,
-	const uint16_t width, const uint16_t height, const uint8_t depth);
-
-
-/* Manipulation ------------------------------------------------------------*/
-tga_result tga_flip_horiz(tga_image *img);
-tga_result tga_flip_vert(tga_image *img);
-tga_result tga_color_unmap(tga_image *img);
-
-uint8_t *tga_find_pixel(const tga_image *img, uint16_t x, uint16_t y);
-tga_result tga_unpack_pixel(const uint8_t *src, const uint8_t bits,
-	uint8_t *b, uint8_t *g, uint8_t *r, uint8_t *a);
-tga_result tga_pack_pixel(uint8_t *dest, const uint8_t bits,
-	const uint8_t b, const uint8_t g, const uint8_t r, const uint8_t a);
-
-tga_result tga_desaturate(tga_image *img,
-	const int cr, const int cg, const int cb, const int dv);
-tga_result tga_desaturate_rec_601_1(tga_image *img);
-tga_result tga_desaturate_rec_709(tga_image *img);
-tga_result tga_desaturate_itu(tga_image *img);
-tga_result tga_desaturate_avg(tga_image *img);
-tga_result tga_convert_depth(tga_image *img, const uint8_t bits);
-tga_result tga_swap_red_blue(tga_image *img);
 
 void tga_free_buffers(tga_image *img);

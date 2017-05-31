@@ -41,12 +41,14 @@ void convertPointWidthToBounds(Configuration* configuration) {
 	}
 }
 
-static inline int doMandelbrotIteration(fp cr, fp ci, fp* modulusSquaredOut, fp tolerance, fp bailoutSquared, int maximumIterations)
+static inline int doMandelbrotIteration(fp cr, fp ci, fp* modulusSquaredOut, fp tolerance, fp bailoutSquared, int maximumIterations, int periodicityCheckIterations)
 {
 	// Initialize orbit parameters of current point
 	fp zrCurrent = 0.0f, ziCurrent = 0.0f, zrPrevious = 0.0f, ziPrevious = 0.0f;
 	fp modulusSquared = 0.0f;
 	int iterations = 0;
+	bool alwaysDoPeriodicityCheck = periodicityCheckIterations == 1,
+		neverDoPeriodicityCheck = periodicityCheckIterations == maximumIterations;
 	// Execute the iterative Mandelbrot formula
 	while (modulusSquared < bailoutSquared && iterations < maximumIterations) {
 		// Calculate Z_(n+1) = Z_n ^ 2 + C,
@@ -55,23 +57,24 @@ static inline int doMandelbrotIteration(fp cr, fp ci, fp* modulusSquaredOut, fp 
 		//       Z_(n-1) = (zrPrevious, ziPrevious)
 		fp zrNext = zrCurrent * zrCurrent - ziCurrent * ziCurrent + cr;
 		fp ziNext = 2 * zrCurrent * ziCurrent + ci;
-		// Calculates coordinate differences between
-		fp drCurrent = zrNext - zrCurrent, drPrevious = zrNext - zrPrevious,
-			diCurrent = ziNext - ziCurrent, diPrevious = ziNext - ziPrevious;
-		// Periodicity checking - speeds up the code.
-		//
-		// Checks if the distance between Z_(n+1) and Z_n or Z_(n+1) and Z_(n-1) is below an epsilon value, 
-		// which indicates that	we're stuck in an infinite loop, and that the point under consideration currently is part of the set.
-		if (((drCurrent*drCurrent + diCurrent*diCurrent) < tolerance) ||
-			((drPrevious*drPrevious + diPrevious*diPrevious) < tolerance))
-		{
-			// The orbit has repeated points - we can expect an infinite cycle, so break out of the loop. Also see above comment.
-			iterations = maximumIterations;
-			break;
+
+		if (alwaysDoPeriodicityCheck ||
+			((!neverDoPeriodicityCheck) &&
+			(iterations > 0) &&
+				((iterations % periodicityCheckIterations) == 0))) {
+			// Calculates coordinate differences between
+			fp  drPrevious = zrNext - zrPrevious, diPrevious = ziNext - ziPrevious;
+			// Periodicity checking - speeds up the code.
+			if ((drPrevious*drPrevious + diPrevious*diPrevious) < tolerance)
+			{
+				// The orbit has repeated points - we can expect an infinite cycle, so break out of the loop. Also see above comment.
+				iterations = maximumIterations;
+				break;
+			}
+			// Update values
+			zrPrevious = zrCurrent;
+			ziPrevious = ziCurrent;
 		}
-		// Update values
-		zrPrevious = zrCurrent;
-		ziPrevious = ziCurrent;
 		zrCurrent = zrNext;
 		ziCurrent = ziNext;
 		// Calculate and update the modulus of (now) Z_n
@@ -97,7 +100,7 @@ static inline rgb pixelColor(const int iterations, const int maximumIterations,
 	if (mode == SMOOTH && iterations < maximumIterations)
 	{
 		// Calculate the normalized iteration count, in the range ~ (indexScale * [iteration, iteration + 1]).
-		index = indexScale * (iterations + 1 - indexWeight * (log(log(modulusSquared) * halfOverLogBailout) * oneOverLog2));
+		index = iterations + 1 - indexWeight * (log(log(modulusSquared) * halfOverLogBailout) * oneOverLog2);
 
 		// Unecessary given prior checks
 
@@ -110,7 +113,7 @@ static inline rgb pixelColor(const int iterations, const int maximumIterations,
 	}
 	// Bring the normalized iteration count into the range [0, indexScale] from [0, 1] (apply palette roll),
 	// applying logarithmic indexing to allow an even distribution of colors.
-	fp scaledIterations = (log(index) - logMinIterations) * oneOverLogBase;
+	fp scaledIterations = (log(indexScale * index) - logMinIterations) * oneOverLogBase;
 	// Truncate and transform it into a real palette index, taking care of bounds checking
 	int actualIndex = (int)(scaledIterations * gradientScale + gradientShift);
 	// Rely on branch prediction - the below conditions should be rare on recommended configurations (about 1 in 5 chance of branch mispredict?)
@@ -159,6 +162,7 @@ static inline rgb pixelColor(const int iterations, const int maximumIterations,
 	return color;
 }
 
+#define oneOver16 (0.0625f)
 void basicMandelbrot(channel* image, Configuration* configuration, const rgb* palette, const int paletteSize)
 {
 	// Allow ease of setting up zooming
@@ -176,8 +180,6 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	int width = clampAbove(configuration->width, 0),
 		height = clampAbove(configuration->height, 0);
 
-	fp tolerance = clampAbove(configuration->tolerance, 0);
-
 	fp gradientScale = isnan(configuration->gradientScale) ? paletteSize - 1 : clampAbove(configuration->gradientScale, 1.0f);
 	int gradientShift = clampAbove(configuration->gradientShift, 0);
 
@@ -193,6 +195,9 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
 	fp xScale = fabs(configuration->bounds.end.x - realStart) / width;
 	fp yScale = -fabs(configuration->bounds.end.y - imaginaryStart) / height;
+
+
+	int periodicityCheckIterations = clamp(configuration->periodicityCheckIterations, 1, maximumIterations);
 #else
 	// Trust the user?
 	int startX = configuration->startX,
@@ -200,8 +205,6 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 
 	int width = configuration->width,
 		height = configuration->height;
-
-	fp tolerance = configuration->tolerance;
 
 	fp gradientScale = isnan(configuration->gradientScale) ? paletteSize - 1 : configuration->gradientScale;
 	int gradientShift = configuration->gradientShift;
@@ -217,19 +220,27 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
 	fp xScale = (configuration->bounds.end.x - realStart) / width;
 	fp yScale = (configuration->bounds.end.y - imaginaryStart) / height;
+
+
+	int periodicityCheckIterations = configuration->periodicityCheckIterations;
 #endif
 
+	ColorMode mode = configuration->mode;
+	if (mode == NO_SMOOTH)
+	{
+		bailout = 4.0f;
+	}
 	// Some formula parameters we can factor out as constants
 	fp bailoutSquared = bailout * bailout;
 	fp logMinIterations = log(minimumIterations);
 	fp oneOverLogBase = 1.0f / (log((fp)maximumIterations) - logMinIterations);
 	fp halfOverLogBailout = 0.5f / log(bailout);
 	fp oneOverLog2 = (1.0f / log(2.0f));
-	
-	ColorMode mode = configuration->mode;
+
+	// Tenth-of-a-pixel tolerance is agreeably quite nice both time and quality-wise
+	fp tolerance = 0.1f * min(xScale, yScale);
 
 	int y;
-
 	// Concurrency!
 #pragma omp parallel for schedule(dynamic, CHUNKS) num_threads(THREADS)
 	// Maintain row-major order traversal to improve cache locality
@@ -241,21 +252,32 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 		fp cr = realStart;
 		// Iterate over columns
 		for (int x = startX; x < width; ++x, cr += xScale)
-		{			
+		{
 			fp modulusSquared = 0.0f;
-			int iterations = doMandelbrotIteration(cr, ci, &modulusSquared, tolerance, bailoutSquared, maximumIterations);
-			rgb color = pixelColor(
-				iterations, maximumIterations, 
-				indexScale, indexWeight, 
-				modulusSquared, halfOverLogBailout, 
-				logMinIterations, oneOverLogBase, 
-				gradientScale, gradientShift,
-				paletteSize, palette,
-				mode, oneOverLog2);
-			
+			fp xPlus1 = cr + 1.0f, xMinusQuarter = cr - 0.25f, ySquared = ci * ci;
+			fp q = xMinusQuarter*xMinusQuarter + ySquared;
+			rgb color = palette[0];
+			// Preemptively avoid iterating points knwon to be inside the set (the main cardioid and the period-2 bulb)
+			if (((xPlus1 * xPlus1 + ySquared) >= oneOver16) &&
+				((q * (q + xMinusQuarter)) >= (0.25f * ySquared))) {
+				int iterations = doMandelbrotIteration(
+					cr, ci,
+					&modulusSquared,
+					tolerance, bailoutSquared,
+					maximumIterations, periodicityCheckIterations);
+				color = pixelColor(
+					iterations, maximumIterations,
+					indexScale, indexWeight,
+					modulusSquared, halfOverLogBailout,
+					logMinIterations, oneOverLogBase,
+					gradientScale, gradientShift,
+					paletteSize, palette,
+					mode, oneOverLog2);
+			}
+
 			// Plot the pixel - linearize (map from 2D to 1D) the index into the image
 			int offset = RGB_BitDepth * (y * width + x);
-			
+
 #ifdef PPM_OUTPUT
 			// PPM Output requires RGB order
 			image[offset] = color.r;
@@ -303,7 +325,7 @@ void basicMandelbrotSequenceSinglePalette(const size_t count, channel** images, 
 		images[index] = calloc(configurations[index]->width * configurations[index]->height * RGB_BitDepth, sizeof(channel));
 		if (images[index] == NULL)
 		{
-			printf( 
+			printf(
 				"Allocating memory for image buffer failed - is there enough free memory for the requested size (%d, %d)?\n",
 				configurations[index]->width, configurations[index]->height);
 			continue;
@@ -321,7 +343,7 @@ void basicMandelbrotSequenceSinglePalette(const size_t count, channel** images, 
 }
 
 char** generateSequentialFileNames(int count)
-{	
+{
 	char directoryName[] = "./";
 	char baseName[] = "image";
 #ifdef PPM_OUTPUT
@@ -330,7 +352,7 @@ char** generateSequentialFileNames(int count)
 	char suffix[] = ".tga";
 #endif
 	char** fileNames = calloc(count, FILE_NAME_MAX_LENGTH * sizeof(char));
-	if (fileNames != NULL) 
+	if (fileNames != NULL)
 	{
 		for (int i = 0; i < count; ++i)
 		{
@@ -355,7 +377,7 @@ static inline float calculateWidthGivenRadiusAsHeight(const fp radiusAsHeight, c
 
 Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configurationsCount)
 {
-	if (configurationFile == NULL) 
+	if (configurationFile == NULL)
 	{
 		return NULL;
 	}
@@ -373,15 +395,14 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 			fp realCentre, imaginaryCentre, radius;
 			if (!fscanf(configurationFile,
 #ifdef HIGH_PRECISION
-				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%lf,{%d:%d}",
+				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d",
 #else
-				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%f,{%d:%d}",
+				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d",
 #endif
 				&configuration->width, &configuration->height, &configuration->maximumIterations,
 				&realCentre, &imaginaryCentre, &radius,
 				&configuration->indexScale, &configuration->minimumIterations,
-				&configuration->bailout, &configuration->tolerance,
-				&configuration->xChunks, &configuration->yChunks))
+				&configuration->bailout, &configuration->periodicityCheckIterations))
 			{
 				// Unexpected EOF - handle it nicely!
 				// Set the palette size to wherever we had to stop
@@ -401,7 +422,7 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 			configuration->fractionWeight = 1.0f;
 			configuration->gradientScale = NAN;
 			configuration->gradientShift = 0;
-			configuration->mode = SMOOTH;
+			configuration->mode = NO_SMOOTH;
 			configurations[i] = configuration;
 		}
 	}
@@ -424,7 +445,7 @@ int main(const int argc, const char** argv) {
 	}
 	// Load configuration
 	FILE* configurationFile = fopen(argv[1], "r");
-	if (configurationFile == NULL) 
+	if (configurationFile == NULL)
 	{
 		printf("Configuration File does not exist or is not accessible.\n");
 		return EXIT_FAILURE;
@@ -448,7 +469,7 @@ int main(const int argc, const char** argv) {
 	{
 		printf("Reading palette failed - Does `palette.pal` exist in the current directory, and is it in the documented format?\n");
 		return EXIT_FAILURE;
-	}	
+	}
 	fclose(paletteFile);
 
 	// Create buffer for storing rendered images
