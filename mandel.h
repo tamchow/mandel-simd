@@ -134,9 +134,9 @@ typedef struct Configuration {
  * Clamping (value-restricting) functions,
  * Defined as a macro so it can be type-generic (work for both `int`s and `float`s, in our case).
  */
-#define clamp(value, min, max) ( ((value) < (min)) ? (min) : ( ((value) > (max)) ? (max) : (value) ) )
+#define clamp(value, min, max) ( ((value) < (MIN)) ? (MIN) : ( ((value) > (max)) ? (max) : (value) ) )
 
-#define clampAbove(value, min) ( ((value) < (min)) ? (min) : (value) )
+#define clampAbove(value, min) ( ((value) < (MIN)) ? (MIN) : (value) )
 
 void convertPointWidthToBounds(Configuration* configuration);
 

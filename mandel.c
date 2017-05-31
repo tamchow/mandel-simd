@@ -19,6 +19,7 @@
 #include "palette.h"
 #include "imageOutput.h"
 
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
 /*
 * source (input format)  = {{centreX, centreY}, {width, height}}
@@ -238,7 +239,7 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	fp oneOverLog2 = (1.0f / log(2.0f));
 
 	// Tenth-of-a-pixel tolerance is agreeably quite nice both time and quality-wise
-	fp tolerance = 0.1f * min(xScale, yScale);
+	fp tolerance = 0.1f * MIN(xScale, yScale);
 
 	int y;
 	// Concurrency!
@@ -393,16 +394,17 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 		{
 			Configuration* configuration = malloc(sizeof(Configuration));
 			fp realCentre, imaginaryCentre, radius;
+			int mode = 0;
 			if (!fscanf(configurationFile,
 #ifdef HIGH_PRECISION
-				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d",
+				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d,%d",
 #else
-				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d",
+				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d,%d",
 #endif
 				&configuration->width, &configuration->height, &configuration->maximumIterations,
 				&realCentre, &imaginaryCentre, &radius,
 				&configuration->indexScale, &configuration->minimumIterations,
-				&configuration->bailout, &configuration->periodicityCheckIterations))
+				&configuration->bailout, &configuration->periodicityCheckIterations, &mode))
 			{
 				// Unexpected EOF - handle it nicely!
 				// Set the palette size to wherever we had to stop
@@ -422,7 +424,7 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 			configuration->fractionWeight = 1.0f;
 			configuration->gradientScale = NAN;
 			configuration->gradientShift = 0;
-			configuration->mode = NO_SMOOTH;
+			configuration->mode = (ColorMode)mode;
 			configurations[i] = configuration;
 		}
 	}

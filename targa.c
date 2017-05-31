@@ -1,18 +1,18 @@
 /* ---------------------------------------------------------------------------
- * Truevision Targa Reader/Writer
- * Copyright (C) 2001-2003 Emil Mikulic.
- *
- * Source and binary redistribution of this code, with or without changes, for
- * free or for profit, is allowed as long as this copyright notice is kept
- * intact.  Modified versions must be clearly marked as modified.
- *
- * This code is provided without any warranty.  The copyright holder is
- * not liable for anything bad that might happen as a result of the
- * code.
- *
- * Modified for exclusively little-endian systems,
- * with parts unconcerned with writing truecolor images discarded.
- * -------------------------------------------------------------------------*/
+* Truevision Targa Reader/Writer
+* Copyright (C) 2001-2003 Emil Mikulic.
+*
+* Source and binary redistribution of this code, with or without changes, for
+* free or for profit, is allowed as long as this copyright notice is kept
+* intact.  Modified versions must be clearly marked as modified.
+*
+* This code is provided without any warranty.  The copyright holder is
+* not liable for anything bad that might happen as a result of the
+* code.
+*
+* Modified for exclusively little-endian systems,
+* with parts unconcerned with writing truecolor images discarded.
+* -------------------------------------------------------------------------*/
 
 #define _CRT_SECURE_NO_WARNINGS 1
 
@@ -30,10 +30,10 @@ static const size_t tgaFooterLength = 26; /* tga_id + \0 */
 typedef enum { RAW, RLE } PacketType;
 
 /* ---------------------------------------------------------------------------
- * Convert the numerical <errcode> into a verbose error string.
- *
- * Returns: an error string
- */
+* Convert the numerical <errcode> into a verbose error string.
+*
+* Returns: an error string
+*/
 const char *tga_error(const tga_result errcode)
 {
 	switch (errcode)
@@ -83,6 +83,24 @@ const char *tga_error(const tga_result errcode)
 #define SAME(ofs1, ofs2) (memcmp(PIXEL(ofs1), PIXEL(ofs2), bpp) == 0)
 
 /* ---------------------------------------------------------------------------
+* Determine whether the next packet should be RAW or RLE for maximum
+* efficiency.  This is a helper function called from rle_packet_len() and
+* tga_write_row_RLE().
+*/
+static PacketType rle_packet_type(const uint8_t *row, const uint16_t pos, const uint16_t width, const uint16_t bpp)
+{
+	if (pos == width - 1) return RAW; /* one pixel */
+	if (SAME(pos, pos + 1)) /* dupe pixel */
+	{
+		if (bpp > 1) return RLE; /* inefficient for bpp=1 */
+
+								 /* three repeats makes the bpp=1 case efficient enough */
+		if ((pos < width - 2) && SAME(pos + 1, pos + 2)) return RLE;
+	}
+	return RAW;
+}
+
+/* ---------------------------------------------------------------------------
 * Find the length of the current RLE packet.  This is a helper function
 * called from tga_write_row_RLE().
 */
@@ -120,28 +138,10 @@ static uint8_t rle_packet_len(const uint8_t *row, const uint16_t pos, const uint
 }
 
 /* ---------------------------------------------------------------------------
-* Determine whether the next packet should be RAW or RLE for maximum
-* efficiency.  This is a helper function called from rle_packet_len() and
-* tga_write_row_RLE().
+* Write one row of an image to <fp> using RLE.  This is a helper function
+* called from tga_write_to_FILE().  It assumes that <src> has its header
+* fields set up correctly.
 */
-static PacketType rle_packet_type(const uint8_t *row, const uint16_t pos, const uint16_t width, const uint16_t bpp)
-{
-	if (pos == width - 1) return RAW; /* one pixel */
-	if (SAME(pos, pos + 1)) /* dupe pixel */
-	{
-		if (bpp > 1) return RLE; /* inefficient for bpp=1 */
-
-								 /* three repeats makes the bpp=1 case efficient enough */
-		if ((pos < width - 2) && SAME(pos + 1, pos + 2)) return RLE;
-	}
-	return RAW;
-}
-
-/* ---------------------------------------------------------------------------
- * Write one row of an image to <fp> using RLE.  This is a helper function
- * called from tga_write_to_FILE().  It assumes that <src> has its header
- * fields set up correctly.
- */
 static tga_result tga_write_row_RLE(FILE *fp, const tga_image *src, const uint8_t *row)
 {
 #define WRITE(src, size) \
@@ -180,12 +180,12 @@ static tga_result tga_write_row_RLE(FILE *fp, const tga_image *src, const uint8_
 #undef PIXEL
 
 /* ---------------------------------------------------------------------------
- * Writes a Targa image to <fp> from <src>.
- *
- * Returns: TGA_NOERR on success, or a TGAERR_* code on failure.
- *          On failure, the contents of the file are not guaranteed
- *          to be valid.
- */
+* Writes a Targa image to <fp> from <src>.
+*
+* Returns: TGA_NOERR on success, or a TGAERR_* code on failure.
+*          On failure, the contents of the file are not guaranteed
+*          to be valid.
+*/
 tga_result tga_write_to_FILE(FILE *fp, const tga_image *src)
 {
 #define WRITE(srcptr, size) \
@@ -242,9 +242,9 @@ tga_result tga_write_to_FILE(FILE *fp, const tga_image *src)
 /* Convenient writing functions --------------------------------------------*/
 
 /*
- * This is just a helper function to initialise the header fields in a
- * tga_image struct.
- */
+* This is just a helper function to initialise the header fields in a
+* tga_image struct.
+*/
 static void init_tga_image(tga_image *img, uint8_t *image, const uint16_t width, const uint16_t height, const uint8_t depth)
 {
 	img->image_id_length = 0;
@@ -274,9 +274,9 @@ tga_result tga_write_bgr_rle_FILE(FILE *file, uint8_t *image, const uint16_t wid
 
 
 /* ---------------------------------------------------------------------------
- * Free the image_id, color_map_data and image_data buffers of the specified
- * tga_image, if they're not already NULL.
- */
+* Free the image_id, color_map_data and image_data buffers of the specified
+* tga_image, if they're not already NULL.
+*/
 void tga_free_buffers(tga_image *img)
 {
 	if (img->image_id != NULL)
