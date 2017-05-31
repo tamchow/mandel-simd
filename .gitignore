@@ -33,6 +33,16 @@ $RECYCLE.BIN/
 
 linux/
 
+# Linux
+# =========================
+
+linux/
+
+# Images
+# =========================
+
+images/
+
 # Log files
 # =========================
 
@@ -73,6 +83,7 @@ Temporary Items
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+[Rr]eleases/*
 x64/
 x86/
 bld/
