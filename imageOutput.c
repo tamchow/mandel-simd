@@ -11,7 +11,10 @@ void writeOutput(FILE* outputFile, channel* image, const int width, const int he
 	fwrite(image, sizeof(channel), width * height * RGB_BitDepth, outputFile);
 #else
 	tga_result result = tga_write_bgr_rle_FILE(outputFile, image, (const uint16_t)width, (const uint16_t)height, RGB_BitDepth * 8);
-	printf("Output Result: %50s\n", tga_error(result));
+	if (result != TGA_NOERR)
+	{
+		printf("Error while writing output: %50s\n", tga_error(result));
+	}
 #endif
 	fclose(outputFile);
 }

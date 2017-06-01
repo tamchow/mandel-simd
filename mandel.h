@@ -16,12 +16,16 @@
 
 #define FILE_NAME_MAX_LENGTH 35 // Assume max value for `count` will have no more than 9 digits
 
-#ifdef HIGH_PRECISION
-#define fp double
+#ifdef EXTREMELY_HIGH_PRECISION
+typedef long double fp;
+#define log logl
+#define fabs fabsl
+#elif defined(HIGH_PRECISION)
+typedef double fp;
 #define log log
 #define fabs fabs
 #else
-#define fp float
+typedef float fp;
 #define log logf
 #define fabs fabsf
 #endif
@@ -128,6 +132,8 @@ typedef struct Configuration {
 	// The number of iterations after which to do the periodicity check.
 	// `maximumIterations/8` is suggested by the fast Mandelbrot renderer AlmondBread.
 	int periodicityCheckIterations;
+	// The fraction of a pixel's dimension to judge the same.
+	fp toleranceFactor;
 } Configuration;
 
 /*
@@ -137,6 +143,8 @@ typedef struct Configuration {
 #define clamp(value, min, max) ( ((value) < (MIN)) ? (MIN) : ( ((value) > (max)) ? (max) : (value) ) )
 
 #define clampAbove(value, min) ( ((value) < (MIN)) ? (MIN) : (value) )
+
+fpair convertScreenSpaceCoordinatesToComplexSpace(const int x, const int y, const fpair complexCentre, const fp radius, const int width, const int height);
 
 void convertPointWidthToBounds(Configuration* configuration);
 

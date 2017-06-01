@@ -2,8 +2,8 @@
 // Doesn't interfere with compilation on POSIX systems (tested with GCC)
 #define _CRT_SECURE_NO_WARNINGS 1
 
-// Use double-precision in calculations instead of single precision
-//#define HIGH_PRECISION
+// Use double- or quad-precision in calculations instead of single precision
+#define EXTREMELY_HIGH_PRECISION
 
 // Don't trust the user
 //#define CHECKS
@@ -22,17 +22,17 @@
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
 /*
-* source (input format)  = {{centreX, centreY}, {width, height}}
+* source (input format)  = {{centreX, centreY}, {radiusX, radiusY}}
 * range  (output format) = {{xMin, yMin}, {xMax, yMax}}
 */
 void convertPointWidthToBounds(Configuration* configuration) {
 	if (configuration->bounds.isPointWidth)
 	{
-		fp halfWidth = configuration->bounds.end.x * 0.5f;
-		fp halfHeight = configuration->bounds.end.y * 0.5f;
+		fp radiusX = configuration->bounds.end.x;
+		fp radiusY = configuration->bounds.end.y;
 		fp centreX = configuration->bounds.start.x, centreY = configuration->bounds.start.y;
-		fpair start = { centreX - halfWidth, centreY - halfHeight },
-			end = { centreX + halfWidth, centreY + halfHeight };
+		fpair start = { centreX - radiusX, centreY - radiusY },
+			end = { centreX + radiusX, centreY + radiusY };
 		region bounds = {
 			bounds.start = start,
 			bounds.end = end,
@@ -171,7 +171,8 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 
 	// We alias some values to avoid dereferencing pointers in a tight loop
 	fp realStart = configuration->bounds.start.x,
-		imaginaryStart = configuration->bounds.start.y;
+		imaginaryStart = configuration->bounds.start.y,
+		imaginaryEnd = configuration->bounds.end.y;
 
 #ifdef CHECKS
 	// Don't trust the user - If you do trust the user, feel free to drop the safeguards and speed up the code by some amount
@@ -193,10 +194,7 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	int maximumIterations = clampAbove(configuration->maximumIterations, 1);
 	fp minimumIterations = (fp)clamp(configuration->minimumIterations, 1, maximumIterations);
 
-	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
-	fp xScale = fabs(configuration->bounds.end.x - realStart) / width;
-	fp yScale = -fabs(configuration->bounds.end.y - imaginaryStart) / height;
-
+	fp toleranceFactor = clamp(configuration->toleranceFactor, 0.0f, 1.0f);
 
 	int periodicityCheckIterations = clamp(configuration->periodicityCheckIterations, 1, maximumIterations);
 #else
@@ -218,13 +216,14 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	int maximumIterations = configuration->maximumIterations;
 	fp minimumIterations = (fp)configuration->minimumIterations;
 
-	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
-	fp xScale = (configuration->bounds.end.x - realStart) / width;
-	fp yScale = (configuration->bounds.end.y - imaginaryStart) / height;
-
+	fp toleranceFactor = configuration->toleranceFactor;	   
 
 	int periodicityCheckIterations = configuration->periodicityCheckIterations;
 #endif
+
+	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
+	fp xScale = fabs(configuration->bounds.end.x - realStart) / width;
+	fp yScale = fabs(imaginaryEnd - imaginaryStart) / height;
 
 	ColorMode mode = configuration->mode;
 	if (mode == NO_SMOOTH)
@@ -238,9 +237,8 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	fp halfOverLogBailout = 0.5f / log(bailout);
 	fp oneOverLog2 = (1.0f / log(2.0f));
 
-	// Tenth-of-a-pixel tolerance is agreeably quite nice both time and quality-wise
-	fp tolerance = 0.1f * MIN(xScale, yScale);
-
+	// Fraction-of-a-pixel tolerance is agreeably quite nice both time and quality-wise
+	fp tolerance = toleranceFactor * MIN(fabs(xScale), fabs(yScale));
 	int y;
 	// Concurrency!
 #pragma omp parallel for schedule(dynamic, CHUNKS) num_threads(THREADS)
@@ -249,7 +247,7 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	for (y = startY; y < height; ++y)
 	{
 		// Cannot factor this one out thanks to OpenMP making the above loop non-squential
-		fp ci = y * yScale + imaginaryStart;
+		fp ci = imaginaryEnd - y * yScale;
 		fp cr = realStart;
 		// Iterate over columns
 		for (int x = startX; x < width; ++x, cr += xScale)
@@ -296,6 +294,7 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 
 void basicMandelbrotSequence(const size_t count, channel** images, Configuration** configurations, const rgb** palettes, const int* paletteSizes)
 {
+	double totalTimeInMilliseconds = 0.0;
 	for (size_t index = 0; index < count; ++index)
 	{
 		images[index] = calloc(configurations[index]->width * configurations[index]->height * RGB_BitDepth, sizeof(channel));
@@ -311,15 +310,21 @@ void basicMandelbrotSequence(const size_t count, channel** images, Configuration
 		basicMandelbrot(images[index], configurations[index], palettes[index], paletteSizes[index]);
 		clock_t end = clock();
 		double elapsedTimeInMilliSeconds = 1e3 * (end - start) / CLOCKS_PER_SEC;
+		totalTimeInMilliseconds += elapsedTimeInMilliSeconds;
 		printf("Time taken for execution of render number %zu was %lf ms\n", index, elapsedTimeInMilliSeconds);
 #else
 		basicMandelbrot(images[index], configurations[index], palettes[index], paletteSizes[index]);
 #endif
 	}
+#ifdef BENCHMARK
+
+	printf("Total time taken for execution of all renders was %lf ms\n", totalTimeInMilliseconds);
+#endif
 }
 
 void basicMandelbrotSequenceSinglePalette(const size_t count, channel** images, Configuration** configurations, const rgb* palette, const int paletteSize)
 {
+	double totalTimeInMilliseconds = 0.0;
 	for (size_t index = 0; index < count; ++index)
 	{
 		// Doing it the Copy-And-Paste way for efficiency reasons
@@ -336,11 +341,16 @@ void basicMandelbrotSequenceSinglePalette(const size_t count, channel** images, 
 		basicMandelbrot(images[index], configurations[index], palette, paletteSize);
 		clock_t end = clock();
 		double elapsedTimeInMilliSeconds = 1e3 * (end - start) / CLOCKS_PER_SEC;
+		totalTimeInMilliseconds += elapsedTimeInMilliSeconds;
 		printf("Time taken for execution of render number %zu was %lf ms\n", index, elapsedTimeInMilliSeconds);
 #else
 		basicMandelbrot(images[index], configurations[index], palette, paletteSize);
 #endif
 	}
+#ifdef BENCHMARK
+
+	printf("Total time taken for execution of all renders was %lf ms\n", totalTimeInMilliseconds);
+#endif
 }
 
 char** generateSequentialFileNames(int count)
@@ -371,11 +381,22 @@ char** generateSequentialFileNames(int count)
 	return fileNames;
 }
 
-static inline float calculateWidthGivenRadiusAsHeight(const fp radiusAsHeight, const int height, const int width)
+static inline fp calculateWidthGivenRadiusAsHeight(const fp radiusAsHeight, const int height, const int width)
 {
 	return ((fp)width * radiusAsHeight) / height;
 }
 
+fpair convertScreenSpaceCoordinatesToComplexSpace(const int x, const int y, const fpair complexCentre, const fp radius, const int width, const int height)
+{
+	fpair newCoordinates;
+	fp radiusY = radius, radiusX = calculateWidthGivenRadiusAsHeight(radiusY, height, width);
+	fp xScale = (2 * radiusX) / width, yScale = (2 * radiusY) / height;
+	newCoordinates.x = x * xScale + (complexCentre.x - radiusX);
+	newCoordinates.y = (complexCentre.y + radiusY) - y * yScale;
+	return newCoordinates;
+}
+
+#define CONFIG_PARAMETER_COUNT 12
 Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configurationsCount)
 {
 	if (configurationFile == NULL)
@@ -393,18 +414,21 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 		for (uint32_t i = 0; i < numberOfConfigurations; ++i)
 		{
 			Configuration* configuration = malloc(sizeof(Configuration));
-			fp realCentre, imaginaryCentre, radius;
+			fp realCentre = 0.0f, imaginaryCentre = 0.0f, radius = 0.0f;
 			int mode = 0;
-			if (!fscanf(configurationFile,
+			if (fscanf(configurationFile,
 #ifdef HIGH_PRECISION
-				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d,%d",
+				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d,%d,%lf",
+#elif defined(EXTREMELY_HIGH_PRECISION)
+				"%d:%d,%d,{%Lf:%Lf:%Lf},%Lf:%d:%Lf:%d,%d,%Lf",
 #else
-				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d,%d",
+				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d,%d,%f",
 #endif
 				&configuration->width, &configuration->height, &configuration->maximumIterations,
 				&realCentre, &imaginaryCentre, &radius,
 				&configuration->indexScale, &configuration->minimumIterations,
-				&configuration->bailout, &configuration->periodicityCheckIterations, &mode))
+				&configuration->bailout, &configuration->periodicityCheckIterations, &mode, &configuration->toleranceFactor)
+				!= CONFIG_PARAMETER_COUNT)
 			{
 				// Unexpected EOF - handle it nicely!
 				// Set the palette size to wherever we had to stop
