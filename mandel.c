@@ -5,6 +5,9 @@
 // Use double- or quad-precision in calculations instead of single precision
 #define EXTREMELY_HIGH_PRECISION
 
+// Allow rotation of the image
+#define ROTATION
+
 // Don't trust the user
 //#define CHECKS
 
@@ -18,6 +21,7 @@
 
 #include "palette.h"
 #include "imageOutput.h"
+#include "mandel.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -163,7 +167,6 @@ static inline rgb pixelColor(const int iterations, const int maximumIterations,
 	return color;
 }
 
-#define oneOver16 (0.0625f)
 void basicMandelbrot(channel* image, Configuration* configuration, const rgb* palette, const int paletteSize)
 {
 	// Allow ease of setting up zooming
@@ -171,6 +174,7 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 
 	// We alias some values to avoid dereferencing pointers in a tight loop
 	fp realStart = configuration->bounds.start.x,
+		realEnd = configuration->bounds.end.x,
 		imaginaryStart = configuration->bounds.start.y,
 		imaginaryEnd = configuration->bounds.end.y;
 
@@ -216,13 +220,13 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	int maximumIterations = configuration->maximumIterations;
 	fp minimumIterations = (fp)configuration->minimumIterations;
 
-	fp toleranceFactor = configuration->toleranceFactor;	   
+	fp toleranceFactor = configuration->toleranceFactor;
 
 	int periodicityCheckIterations = configuration->periodicityCheckIterations;
 #endif
 
 	// Values which enable a scaling transform from screen-space coordinates to complex plane coordinates
-	fp xScale = fabs(configuration->bounds.end.x - realStart) / width;
+	fp xScale = fabs(realEnd - realStart) / width;
 	fp yScale = fabs(imaginaryEnd - imaginaryStart) / height;
 
 	ColorMode mode = configuration->mode;
@@ -236,6 +240,17 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	fp oneOverLogBase = 1.0f / (log((fp)maximumIterations) - logMinIterations);
 	fp halfOverLogBailout = 0.5f / log(bailout);
 	fp oneOverLog2 = (1.0f / log(2.0f));
+	fp oneOver16 = 0.0625f;
+
+	fp angle = configuration->angle;
+
+#ifdef ROTATION
+	fp sinTheta = angle == 0.0f ? 0.0f : sin(angle),
+		cosTheta = angle == 0.0f ? 1.0f : cos(angle);
+
+	fp screenCentreX = startX + (width / 2.0f),
+		screenCentreY = startY + (height / 2.0f);
+#endif
 
 	// Fraction-of-a-pixel tolerance is agreeably quite nice both time and quality-wise
 	fp tolerance = toleranceFactor * MIN(fabs(xScale), fabs(yScale));
@@ -245,13 +260,23 @@ void basicMandelbrot(channel* image, Configuration* configuration, const rgb* pa
 	// Maintain row-major order traversal to improve cache locality
 	// Iterate over rows while calculating the complex plane coordinates of our current screen-space location as necessary
 	for (y = startY; y < height; ++y)
-	{
-		// Cannot factor this one out thanks to OpenMP making the above loop non-squential
-		fp ci = imaginaryEnd - y * yScale;
-		fp cr = realStart;
+	{	
+#ifdef ROTATION
+		fp dy = dy = y - screenCentreY;
+		// Iterate over columns
+		for (int x = startX; x < width; ++x)
+		{
+			fp dx = x - screenCentreX;
+			fp rotatedX = (dx * cosTheta - dy * sinTheta) + screenCentreX, 
+				rotatedY = (dx * sinTheta + dy * cosTheta) + screenCentreY;
+			fp ci = imaginaryEnd - rotatedY * yScale;
+			fp cr = realStart + rotatedX * xScale;
+#else
+		fp ci = imaginaryEnd - y * yScale, cr = realStart;
 		// Iterate over columns
 		for (int x = startX; x < width; ++x, cr += xScale)
 		{
+#endif
 			fp modulusSquared = 0.0f;
 			fp xPlus1 = cr + 1.0f, xMinusQuarter = cr - 0.25f, ySquared = ci * ci;
 			fp q = xMinusQuarter*xMinusQuarter + ySquared;
@@ -386,17 +411,30 @@ static inline fp calculateWidthGivenRadiusAsHeight(const fp radiusAsHeight, cons
 	return ((fp)width * radiusAsHeight) / height;
 }
 
-fpair convertScreenSpaceCoordinatesToComplexSpace(const int x, const int y, const fpair complexCentre, const fp radius, const int width, const int height)
+fpair convertScreenSpaceCoordinatesToComplexSpace(
+	const int x, const int y,
+	const fpair complexCentre, const fp radius, const fp angle,
+	const int startX, const int startY,
+	const int width, const int height)
 {
 	fpair newCoordinates;
-	fp radiusY = radius, radiusX = calculateWidthGivenRadiusAsHeight(radiusY, height, width);
-	fp xScale = (2 * radiusX) / width, yScale = (2 * radiusY) / height;
-	newCoordinates.x = x * xScale + (complexCentre.x - radiusX);
-	newCoordinates.y = (complexCentre.y + radiusY) - y * yScale;
+	fp radiusY = radius,
+		radiusX = calculateWidthGivenRadiusAsHeight(radiusY, height, width);
+	fp centreX = startX + (width / 2.0f),
+		centreY = startY + (height / 2.0f);
+	fp xScale = (2 * radiusX) / width,
+		yScale = (2 * radiusY) / height;
+	fp sinTheta = sin(angle),
+		cosTheta = cos(angle);
+	fp dx = x - centreX, dy = y - centreY;
+	fp rotatedX = (dx * cosTheta - dy * sinTheta) + centreX,
+		rotatedY = (dx * sinTheta + dy * cosTheta) + centreY;
+	newCoordinates.x = rotatedX * xScale + (complexCentre.x - radiusX);
+	newCoordinates.y = (complexCentre.y + radiusY) - rotatedY * yScale;
 	return newCoordinates;
 }
 
-#define CONFIG_PARAMETER_COUNT 12
+#define CONFIG_PARAMETER_COUNT 13
 Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configurationsCount)
 {
 	if (configurationFile == NULL)
@@ -418,14 +456,14 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 			int mode = 0;
 			if (fscanf(configurationFile,
 #ifdef HIGH_PRECISION
-				"%d:%d,%d,{%lf:%lf:%lf},%lf:%d:%lf:%d,%d,%lf",
+				"%d:%d,%d,{%lf:%lf:%lf:%lf},%lf:%d:%lf:%d,%d,%lf",
 #elif defined(EXTREMELY_HIGH_PRECISION)
-				"%d:%d,%d,{%Lf:%Lf:%Lf},%Lf:%d:%Lf:%d,%d,%Lf",
+				"%d:%d,%d,{%Lf:%Lf:%Lf:%Lf},%Lf:%d:%Lf:%d,%d,%Lf",
 #else
-				"%d:%d,%d,{%f:%f:%f},%f:%d:%f:%d,%d,%f",
+				"%d:%d,%d,{%f:%f:%f:%f},%f:%d:%f:%d,%d,%f",
 #endif
 				&configuration->width, &configuration->height, &configuration->maximumIterations,
-				&realCentre, &imaginaryCentre, &radius,
+				&realCentre, &imaginaryCentre, &radius, &configuration->angle,
 				&configuration->indexScale, &configuration->minimumIterations,
 				&configuration->bailout, &configuration->periodicityCheckIterations, &mode, &configuration->toleranceFactor)
 				!= CONFIG_PARAMETER_COUNT)
@@ -434,7 +472,7 @@ Configuration** readConfigurationsFromFile(FILE* configurationFile, int* configu
 				// Set the palette size to wherever we had to stop
 				*configurationsCount = i;
 				// Ensure that we don't leak memory by using more than what we need
-				configurations = realloc(configurations, (*configurationsCount * sizeof(Configuration*)));
+				configurations = realloc(configurations, ((*configurationsCount) * sizeof(Configuration*)));
 				// Exit	loop
 				break;
 			}

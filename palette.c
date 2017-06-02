@@ -42,7 +42,7 @@ rgb* loadPalette(FILE* input, int* paletteSize)
 				// Set the palette size to wherever we had to stop
 				*paletteSize = i;
 				// Ensure that we don't leak memory by using more than what we need
-				palette = realloc(palette, (*paletteSize * sizeof(rgb)));
+				palette = realloc(palette, ((*paletteSize) * sizeof(rgb)));
 				// Exit	loop
 				break;
 			}

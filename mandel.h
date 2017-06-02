@@ -20,14 +20,20 @@
 typedef long double fp;
 #define log logl
 #define fabs fabsl
+#define sin sinl
+#define cos cosl
 #elif defined(HIGH_PRECISION)
 typedef double fp;
 #define log log
 #define fabs fabs
+#define sin sin
+#define cos cos
 #else
 typedef float fp;
 #define log logf
 #define fabs fabsf
+#define sin sinf
+#define cos cosf
 #endif
 
 
@@ -100,6 +106,8 @@ typedef struct Configuration {
 	
 	// Contains the region of the complex plane to render. See comment on definition.
 	region bounds;
+	// The angle by which to rotate screen space coordinates during transformation to complex space
+	fp angle;
 	
 	// Obvious Mandelbrot stuff
     int maximumIterations;
@@ -144,7 +152,11 @@ typedef struct Configuration {
 
 #define clampAbove(value, min) ( ((value) < (MIN)) ? (MIN) : (value) )
 
-fpair convertScreenSpaceCoordinatesToComplexSpace(const int x, const int y, const fpair complexCentre, const fp radius, const int width, const int height);
+fpair convertScreenSpaceCoordinatesToComplexSpace(
+	const int x, const int y,
+	const fpair complexCentre, const fp radius, const fp angle,
+	const int startX, const int startY, 
+	const int width, const int height);
 
 void convertPointWidthToBounds(Configuration* configuration);
 
