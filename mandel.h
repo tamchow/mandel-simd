@@ -148,9 +148,9 @@ typedef struct Configuration {
  * Clamping (value-restricting) functions,
  * Defined as a macro so it can be type-generic (work for both `int`s and `float`s, in our case).
  */
-#define clamp(value, min, max) ( ((value) < (MIN)) ? (MIN) : ( ((value) > (max)) ? (max) : (value) ) )
+#define clamp(value, minimum, maximum) ( ((value) < (minimum)) ? (minimum) : ( ((value) > (maximum)) ? (maximum) : (value) ) )
 
-#define clampAbove(value, min) ( ((value) < (MIN)) ? (MIN) : (value) )
+#define clampAbove(value, minimum) ( ((value) < (minimum)) ? (minimum) : (value) )
 
 fpair convertScreenSpaceCoordinatesToComplexSpace(
 	const int x, const int y,

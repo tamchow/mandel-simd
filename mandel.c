@@ -9,7 +9,7 @@
 #define ROTATION
 
 // Don't trust the user
-//#define CHECKS
+#define CHECKS
 
 // Benchmark mode
 #define BENCHMARK
